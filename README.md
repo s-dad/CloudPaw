@@ -25,12 +25,11 @@ Runs the full site and API locally at http://localhost:3000.
 
 ### Prerequisites
 - [nvm](https://github.com/nvm-sh/nvm) (Node Version Manager)
-- Node.js 20 LTS, installed with nvm:
+- Node.js 24 LTS. The version is set in the `.nvmrc` file in the project root, so you don't need to type it. From the project folder, run:
   ```bash
-  nvm install 20
-  nvm use 20
+  nvm install   # first time only: installs the version in .nvmrc
+  nvm use       # switches to it; run this in each new terminal
   ```
-  Use Node 20 for now: the database library (`better-sqlite3` 11) does not build on Node 24. Upgrading it is planned.
 
 ### Install
 All backend commands run from the `backend` folder.
@@ -58,5 +57,5 @@ npm start
 Then open http://localhost:3000.
 
 ### Troubleshooting
-- **Segmentation fault, or `better-sqlite3` won't load:** delete `backend/node_modules` and run `npm install` again (from the `backend` folder). Check `node -v` shows Node 20.
+- **Segmentation fault, or `better-sqlite3` won't load:** delete `backend/node_modules` and run `npm install` again (from the `backend` folder). Check `node -v` shows Node 24 (run `nvm use`).
 - **`Cannot find module ... server.js`:** you're in the wrong folder. Run `cd backend` first.
