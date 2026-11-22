@@ -88,7 +88,10 @@ api.use('/auth', auth.router);
 
 api.get('/pets', (req, res) => {
   const { species, q } = req.query;
-  const conditions = [];
+  // Adopted pets are left out of listings and search. GET /pets/:id still
+  // returns them, so old links to a pet's page keep working.
+  // (IS NOT, unlike !=, also keeps rows whose status is empty.)
+  const conditions = ["status IS NOT 'adopted'"];
   const params = [];
 
   if (species) {
@@ -286,8 +289,14 @@ api.post('/inquiries', (req, res) => {
 
   // better-sqlite3 enforces REFERENCES pets(id), so a missing pet would make the INSERT
   // fail with a 500. Check here first so the form gets a clear 400 for petId instead.
-  if (!errors.petId && !db.prepare('SELECT 1 FROM pets WHERE id = ?').get(values.petId)) {
-    errors.petId = 'That pet could not be found.';
+  // Only available pets take applications (not adopted ones).
+  if (!errors.petId) {
+    const pet = db.prepare('SELECT status FROM pets WHERE id = ?').get(values.petId);
+    if (!pet) {
+      errors.petId = 'That pet could not be found.';
+    } else if ((pet.status ?? 'available') !== 'available') {
+      errors.petId = 'This pet is no longer available for adoption.';
+    }
   }
 
   if (Object.keys(errors).length) {
