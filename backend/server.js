@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const { rateLimit } = require('express-rate-limit');
 const db = require('./db');
 const auth = require('./auth');
 const app = express();
@@ -39,6 +40,49 @@ app.use(express.json());
 // All JSON API routes live under /api (e.g. /api/pets), so they can never
 // collide with the frontend's page and asset paths.
 const api = express.Router();
+
+/* ---------- Rate limits ---------- */
+// Slows down password guessing and form spam: each client IP address gets a
+// fixed number of requests per 15 minutes on these routes, then a JSON 429.
+// Each route has its own counter. Defaults can be changed with environment
+// variables (the tests raise them so they don't hit the limits).
+//
+// These counters live in this server's memory, so they only work for a single
+// running server, which is what we have locally. On AWS, Lambda runs many
+// copies of the app that don't share memory, so each copy would keep its own
+// count; there, API Gateway throttling will do this job instead.
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+
+// A positive whole number from the environment, or the default.
+function limitFromEnv(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function rateLimiter(limit, message, options = {}) {
+  return rateLimit({
+    windowMs: RATE_WINDOW_MS,
+    limit,
+    message: { error: message },
+    standardHeaders: 'draft-8', // RateLimit and RateLimit-Policy headers
+    legacyHeaders: false, // no X-RateLimit-* headers
+    ...options,
+  });
+}
+
+const LOGIN_LIMIT = limitFromEnv('RATE_LIMIT_LOGIN', 10);
+const SIGNUP_LIMIT = limitFromEnv('RATE_LIMIT_SIGNUP', 5);
+const FORM_LIMIT = limitFromEnv('RATE_LIMIT_FORMS', 20);
+const TRY_LATER = 'Please wait a few minutes and try again.';
+
+// Login counts only failed attempts, so people who sign in normally are never
+// slowed down; repeated wrong passwords are.
+api.post('/auth/login', rateLimiter(LOGIN_LIMIT, `Too many sign-in attempts. ${TRY_LATER}`, {
+  skipSuccessfulRequests: true,
+}));
+api.post('/auth/signup', rateLimiter(SIGNUP_LIMIT, `Too many sign-up attempts. ${TRY_LATER}`));
+api.post('/inquiries', rateLimiter(FORM_LIMIT, `Too many applications sent. ${TRY_LATER}`));
+api.post('/messages', rateLimiter(FORM_LIMIT, `Too many messages sent. ${TRY_LATER}`));
 
 api.use('/auth', auth.router);
 

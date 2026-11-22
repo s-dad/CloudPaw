@@ -25,6 +25,13 @@ async function startTestServer() {
   const dbPath = path.join(dir, 'test.db');
   process.env.DB_PATH = dbPath;
 
+  // The tests sign up and sign in many times from the same address within
+  // seconds, so raise the rate limits for them. Only when not already set: a
+  // test file that checks the limits sets its own low values before calling this.
+  for (const name of ['RATE_LIMIT_LOGIN', 'RATE_LIMIT_SIGNUP', 'RATE_LIMIT_FORMS']) {
+    process.env[name] ??= '1000';
+  }
+
   const db = require('../db');
   // Safety check: stop if the app opened anything other than the temporary
   // file (e.g. db.js was loaded before DB_PATH was set).
