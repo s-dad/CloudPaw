@@ -101,3 +101,46 @@ describe('HTML in form fields is stored as plain text', () => {
     assert.equal(found.name, html);
   });
 });
+
+describe('security headers (helmet)', () => {
+  // A page, an API response and an error response should all get them.
+  const requests = [
+    ['a page (GET /)', () => t.api('GET', '/')],
+    ['an API response (GET /api/pets)', () => t.api('GET', '/api/pets')],
+    ['a JSON error (malformed JSON)', async () => {
+      const res = await fetch(`${t.base}/api/messages`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{',
+      });
+      return { status: res.status, headers: res.headers };
+    }],
+  ];
+
+  for (const [name, request] of requests) {
+    test(`present on ${name}, and X-Powered-By is gone`, async (ctx) => {
+      ctx.mock.method(console, 'error', () => {}); // the malformed-JSON request logs a line
+      const { headers } = await request();
+
+      assert.equal(headers.get('x-powered-by'), null);
+      assert.equal(headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(headers.get('x-frame-options'), 'SAMEORIGIN');
+      assert.equal(headers.get('referrer-policy'), 'no-referrer');
+      assert.match(headers.get('strict-transport-security'), /max-age=\d+/);
+      assert.equal(headers.get('cross-origin-opener-policy'), 'same-origin');
+
+      const csp = headers.get('content-security-policy');
+      assert.ok(csp, 'has a Content-Security-Policy');
+      const directives = Object.fromEntries(csp.split(';').map((d) => {
+        const [key, ...values] = d.trim().split(/\s+/);
+        return [key, values.join(' ')];
+      }));
+      assert.equal(directives['default-src'], "'self'");
+      assert.equal(directives['script-src'], "'self'", 'scripts only from this server');
+      assert.equal(directives['script-src-attr'], "'none'", 'no onclick="..." handlers');
+      assert.equal(directives['object-src'], "'none'");
+      assert.equal(directives['frame-ancestors'], "'self'");
+      assert.equal(directives['style-src'], "'self' https://fonts.googleapis.com 'unsafe-inline'");
+      assert.equal(directives['font-src'], "'self' https://fonts.gstatic.com");
+      assert.ok(!('upgrade-insecure-requests' in directives), 'off for local http');
+    });
+  }
+});

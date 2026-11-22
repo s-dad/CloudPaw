@@ -376,10 +376,12 @@ const applicationRowHtml = (app) => {
   const status = String(app.status || "pending").toLowerCase();
   const label = status.charAt(0).toUpperCase() + status.slice(1);
   const badge = STATUS_BADGES.includes(status) ? `badge--${status}` : "";
-  // Approve/Deny only show an alert for now; nothing is saved yet.
+  // Approve/Deny only show an alert for now; nothing is saved yet. Clicks are
+  // handled by the shared click listener below (no inline onclick, so the
+  // Content-Security-Policy can block inline scripts).
   const actions = status === "pending"
-    ? `<button type="button" class="btn-small btn-small--approve" onclick="alert('Application Approved!')">Approve</button>
-       <button type="button" class="btn-small btn-small--deny" onclick="alert('Application Denied.')">Deny</button>`
+    ? `<button type="button" class="btn-small btn-small--approve" data-action="approve-application">Approve</button>
+       <button type="button" class="btn-small btn-small--deny" data-action="deny-application">Deny</button>`
     : `<span class="muted">Completed</span>`;
   return `
     <tr>
@@ -700,6 +702,48 @@ const pages = {
       statusEl.classList.add("status--error");
     }
   },
+
+  // "Ask AI" demo chat. Answers are hard-coded for now.
+  // (Moved here from an inline <script> in chatbot.html so the
+  // Content-Security-Policy can block all inline scripts.)
+  chatbot() {
+    const chatForm = document.getElementById("chat-form");
+    const chatInput = document.getElementById("chat-input");
+    const chatMessages = document.getElementById("chat-messages");
+
+    chatForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const userText = chatInput.value.trim();
+      if (!userText) return;
+
+      // 1. Add the user's message to the screen
+      const userMsg = document.createElement("div");
+      userMsg.className = "message user";
+      userMsg.textContent = userText;
+      chatMessages.appendChild(userMsg);
+
+      chatInput.value = "";
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      // 2. Simulate the AI thinking (this is where Bedrock will go later)
+      setTimeout(() => {
+        const botMsg = document.createElement("div");
+        botMsg.className = "message bot";
+
+        // Fake AI logic for the demo
+        if (userText.toLowerCase().includes("luna")) {
+          botMsg.textContent = "Luna is a 2-year-old Labrador Retriever mix. She is very friendly, high-energy, and loves to play fetch!";
+        } else if (userText.toLowerCase().includes("cat")) {
+          botMsg.textContent = "We currently have Milo and Oliver available. Milo is a laid-back tabby, and Oliver is a gentle Maine Coon.";
+        } else {
+          botMsg.textContent = "That's a great question! Once I am connected to AWS Bedrock, I will search our database and documents to give you a detailed answer.";
+        }
+
+        chatMessages.appendChild(botMsg);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }, 1000); // 1 second delay to simulate AI processing
+    });
+  },
 };
 
 /* ---------- Shared events ---------- */
@@ -723,9 +767,12 @@ els.navToggle?.addEventListener("click", () => {
 /* ---------- Footer year ---------- */
 if (els.year) els.year.textContent = new Date().getFullYear();
 
-// "Sign out" in the nav (rendered by renderAuthNav).
+// "Sign out" in the nav (rendered by renderAuthNav), and Approve/Deny on
+// admin-applications.html (rendered by applicationRowHtml).
 document.addEventListener("click", (e) => {
   if (e.target.closest('[data-action="sign-out"]')) signOut();
+  if (e.target.closest('[data-action="approve-application"]')) alert("Application Approved!");
+  if (e.target.closest('[data-action="deny-application"]')) alert("Application Denied.");
 });
 
 /* ---------- Boot ---------- */
