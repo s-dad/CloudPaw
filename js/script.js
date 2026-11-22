@@ -344,6 +344,8 @@ const petCardHtml = (pet) => `
     </div>
   </article>`;
 
+// An adopted pet's page still loads (old links keep working), but shows that
+// the pet has been adopted instead of the Apply button.
 const petDetailHtml = (pet) => `
   <article class="pet-detail">
     <img
@@ -361,9 +363,15 @@ const petDetailHtml = (pet) => `
         <div><dt>Location</dt><dd>${escapeHtml(pet.location || "Unknown")}</dd></div>
       </dl>
       <p>${escapeHtml(pet.description || `${pet.name} is waiting for a loving home.`)}</p>
-      <a class="btn btn-primary" href="adopt.html?pet=${encodeURIComponent(pet.id)}">
-        Apply to adopt ${escapeHtml(pet.name)}
-      </a>
+      ${pet.status === "adopted"
+        ? `<p class="notice pet-detail__adopted">
+             <span class="badge badge--approved">Adopted</span>
+             ${escapeHtml(pet.name)} has found a home and is no longer taking applications.
+             <a href="pets.html">Meet the pets still looking for one</a>.
+           </p>`
+        : `<a class="btn btn-primary" href="adopt.html?pet=${encodeURIComponent(pet.id)}">
+             Apply to adopt ${escapeHtml(pet.name)}
+           </a>`}
       <a class="back-link" href="pets.html">← Back to all pets</a>
     </div>
   </article>`;
@@ -376,15 +384,18 @@ const applicationRowHtml = (app) => {
   const status = String(app.status || "pending").toLowerCase();
   const label = status.charAt(0).toUpperCase() + status.slice(1);
   const badge = STATUS_BADGES.includes(status) ? `badge--${status}` : "";
-  // Approve/Deny only show an alert for now; nothing is saved yet. Clicks are
-  // handled by the shared click listener below (no inline onclick, so the
-  // Content-Security-Policy can block inline scripts).
-  const actions = status === "pending"
-    ? `<button type="button" class="btn-small btn-small--approve" data-action="approve-application">Approve</button>
-       <button type="button" class="btn-small btn-small--deny" data-action="deny-application">Deny</button>`
-    : `<span class="muted">Completed</span>`;
+  // Approve/Deny call PATCH /api/inquiries/:id (see the admin-applications page
+  // below; no inline onclick, so the Content-Security-Policy can block inline
+  // scripts). Decisions are final, so the buttons are disabled once decided.
+  const disabled = status === "pending" ? "" : " disabled";
+  const who = escapeHtml(app.name);
+  const actions = `
+    <button type="button" class="btn-small btn-small--approve" data-action="approve-application"
+            aria-label="Approve ${who}'s application"${disabled}>Approve</button>
+    <button type="button" class="btn-small btn-small--deny" data-action="deny-application"
+            aria-label="Deny ${who}'s application"${disabled}>Deny</button>`;
   return `
-    <tr>
+    <tr data-application-id="${escapeHtml(String(app.id))}">
       <td>${escapeHtml(app.name)}</td>
       <td class="data-table__strong">${escapeHtml(app.pet_name || `Pet #${app.pet_id}`)}</td>
       <td class="muted">${escapeHtml(app.email)}</td>
@@ -392,6 +403,82 @@ const applicationRowHtml = (app) => {
       <td class="data-table__actions">${actions}</td>
     </tr>`;
 };
+
+// Approve / Deny on admin-applications.html. Asks for confirmation, sends
+// PATCH /api/inquiries/:id with the admin's token, then redraws the decided row
+// and any rows the server denied automatically (approving one application
+// denies the pet's other pending ones). Errors show in the status line.
+function wireApplicationDecisions(tbody, statusEl, apps) {
+  const byId = new Map(apps.map((app) => [String(app.id), app]));
+  const setStatus = (message, isError = false) => {
+    statusEl.textContent = message;
+    statusEl.classList.toggle("status--error", isError);
+  };
+  const redraw = (app) => {
+    byId.set(String(app.id), app);
+    const row = tbody.querySelector(`tr[data-application-id="${CSS.escape(String(app.id))}"]`);
+    if (row) row.outerHTML = applicationRowHtml(app);
+  };
+
+  tbody.addEventListener("click", async (e) => {
+    const button = e.target.closest('[data-action="approve-application"], [data-action="deny-application"]');
+    if (!button || button.disabled) return;
+    const row = button.closest("tr");
+    const app = byId.get(row.dataset.applicationId);
+    if (!app) return;
+
+    const decision = button.dataset.action === "approve-application" ? "approved" : "denied";
+    const pet = app.pet_name || `Pet #${app.pet_id}`;
+    const question = decision === "approved"
+      ? `Approve ${app.name}'s application for ${pet}?\n\n${pet} will be marked as adopted, and any other pending applications for ${pet} will be denied. This can't be undone.`
+      : `Deny ${app.name}'s application for ${pet}?\n\nThis can't be undone.`;
+    if (!window.confirm(question)) return;
+
+    const buttons = row.querySelectorAll("button");
+    buttons.forEach((b) => { b.disabled = true; });
+    setStatus("Saving…");
+
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/inquiries/${encodeURIComponent(app.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ status: decision }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        // Session expired or no longer an admin: sign in again.
+        if (res.status === 401) clearAuth();
+        goToSignIn();
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        redraw(body.application);
+        const autoDenied = body.autoDenied || [];
+        for (const id of autoDenied) {
+          const other = byId.get(String(id));
+          if (other) redraw({ ...other, status: "denied" });
+        }
+        let message = `${decision === "approved" ? "Approved" : "Denied"} ${app.name}'s application for ${pet}.`;
+        if (autoDenied.length) {
+          message += ` ${autoDenied.length} other ${autoDenied.length === 1 ? "application" : "applications"} for ${pet} ${autoDenied.length === 1 ? "was" : "were"} denied automatically.`;
+        }
+        setStatus(message);
+        return;
+      }
+
+      // 400 / 404 / 409 / 500: show the API's message and let the admin try again.
+      let message = body.error || "Could not update the application. Please try again.";
+      if (res.status === 409) message += " Refresh the page to see the latest status.";
+      setStatus(message, true);
+      buttons.forEach((b) => { b.disabled = false; });
+    } catch (err) {
+      console.error(err);
+      setStatus("We couldn't reach the server. Please try again.", true);
+      buttons.forEach((b) => { b.disabled = false; });
+    }
+  });
+}
 
 const skeletons = (count) =>
   Array.from({ length: count }).map(() => `<div class="skeleton"></div>`).join("");
@@ -696,6 +783,7 @@ const pages = {
       statusEl.textContent = apps.length
         ? `${apps.length} ${apps.length === 1 ? "application" : "applications"}.`
         : "No applications yet.";
+      wireApplicationDecisions(tbody, statusEl, apps);
     } catch (err) {
       console.error(err);
       statusEl.textContent = "Sorry, we couldn't load applications right now. Please try again later.";
@@ -767,12 +855,10 @@ els.navToggle?.addEventListener("click", () => {
 /* ---------- Footer year ---------- */
 if (els.year) els.year.textContent = new Date().getFullYear();
 
-// "Sign out" in the nav (rendered by renderAuthNav), and Approve/Deny on
-// admin-applications.html (rendered by applicationRowHtml).
+// "Sign out" in the nav (rendered by renderAuthNav). Approve/Deny are handled
+// by wireApplicationDecisions on admin-applications.html.
 document.addEventListener("click", (e) => {
   if (e.target.closest('[data-action="sign-out"]')) signOut();
-  if (e.target.closest('[data-action="approve-application"]')) alert("Application Approved!");
-  if (e.target.closest('[data-action="deny-application"]')) alert("Application Denied.");
 });
 
 /* ---------- Boot ---------- */
