@@ -3,6 +3,12 @@ const fs = require('fs');
 const db = new Database(__dirname + '/cloudpaw.db');
 db.exec(fs.readFileSync(__dirname + '/schema.sql', 'utf8'));
 
+// The old "applications" table was never used: adoption applications are saved
+// in "inquiries" instead. It was removed from schema.sql, but databases created
+// before that still have it, so drop it here. Nothing reads or writes it, and
+// IF EXISTS makes this a no-op once it's gone.
+db.exec('DROP TABLE IF EXISTS applications');
+
 // CREATE TABLE IF NOT EXISTS never changes a table that already exists, so
 // columns added to schema.sql later must also be added to older databases here.
 // Each one is added only if missing, so this is safe to run on every start and
