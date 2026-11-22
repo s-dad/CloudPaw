@@ -1,9 +1,38 @@
 const path = require('path');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const db = require('./db');
 const auth = require('./auth');
 const app = express();
+
+// Security headers on every response (helmet's defaults), plus a
+// Content-Security-Policy that only lets the browser load what the site uses.
+// Helmet's default policy is kept except for these changes:
+//   script-src  'self' (default): only js/script.js from this server. No inline
+//               <script> or onclick="..." anywhere (script-src-attr 'none').
+//   style-src   our CSS, the Google Fonts stylesheet, and inline styles
+//               (chatbot.html has a <style> block and style="..." attributes).
+//               Narrower than the default, which allows any https: stylesheet.
+//   font-src    our files and fonts.gstatic.com, where Google Fonts serves the
+//               font files. Narrower than the default (any https: or data:).
+//   upgrade-insecure-requests  off: locally the site runs on plain http://, and
+//               this would make browsers request everything over https://.
+//               On AWS, CloudFront enforces HTTPS instead.
+// fetch() calls to /api are same-origin, covered by default-src 'self'. If the
+// API moves to another domain (e.g. API Gateway), add it to connect-src.
+app.disable('x-powered-by');
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        'style-src': ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
+        'font-src': ["'self'", 'https://fonts.gstatic.com'],
+        'upgrade-insecure-requests': null,
+      },
+    },
+  }),
+);
 app.use(cors());
 app.use(express.json());
 
