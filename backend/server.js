@@ -340,6 +340,45 @@ app.get(/^\/(?:[\w-]+\.html)?$/, (req, res, next) => {
   res.sendFile(file, { root: SITE_ROOT }, (err) => err && next());
 });
 
+/* ---------- Errors ---------- */
+// The one place errors end up, instead of Express's HTML error page (which
+// includes the stack trace unless NODE_ENV=production). Replies are always
+// JSON with a fixed message: never err.message or a stack, whatever NODE_ENV is.
+//
+// How errors get here: Express 5 passes along both errors thrown in normal
+// route handlers (GET /api/pets, GET /api/pets/:id) and rejected promises from
+// async ones (signup, login), so those routes don't need their own try/catch.
+// Routes that already catch their errors keep their own friendly 500 messages.
+// Messages for errors express.json() raises while reading a request body,
+// by error type.
+const BODY_ERROR_MESSAGES = {
+  'entity.parse.failed': 'The request body is not valid JSON.', // 400
+  'entity.too.large': 'The request body is too large.', // 413
+  'charset.unsupported': 'The request body uses an unsupported encoding.', // 415
+  'encoding.unsupported': 'The request body uses an unsupported encoding.', // 415
+};
+
+// Express requires all four parameters to recognize an error handler.
+app.use((err, req, res, next) => {
+  // A reply was already partly sent, so a JSON one can't follow; let Express
+  // close the connection.
+  if (res.headersSent) return next(err);
+
+  // Problems with the request itself (malformed JSON, too large, bad encoding).
+  // Keep their 4xx status so the client's mistake isn't reported as a server error.
+  const status = err.status || err.statusCode;
+  if (err.expose && status >= 400 && status < 500) {
+    console.error(`${req.method} ${req.originalUrl}: ${status} ${err.type || err.message}`);
+    return res.status(status).json({
+      error: BODY_ERROR_MESSAGES[err.type] || 'The request could not be read.',
+    });
+  }
+
+  // Anything else is unexpected: log the details here, send none to the client.
+  console.error(`${req.method} ${req.originalUrl}: unexpected error`, err);
+  res.status(500).json({ error: 'Something went wrong. Please try again later.' });
+});
+
 module.exports = app;
 
 // Listen on port 3000 only when this file is run directly (node server.js or
