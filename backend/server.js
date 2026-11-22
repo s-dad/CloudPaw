@@ -340,4 +340,10 @@ app.get(/^\/(?:[\w-]+\.html)?$/, (req, res, next) => {
   res.sendFile(file, { root: SITE_ROOT }, (err) => err && next());
 });
 
-app.listen(3000, () => console.log('CloudPaw on http://localhost:3000 (API at /api)'));
+module.exports = app;
+
+// Listen on port 3000 only when this file is run directly (node server.js or
+// npm start). Tests require it instead and start the app on a free port.
+if (require.main === module) {
+  app.listen(3000, () => console.log('CloudPaw on http://localhost:3000 (API at /api)'));
+}

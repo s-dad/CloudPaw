@@ -56,6 +56,13 @@ npm start
 ```
 Then open http://localhost:3000.
 
+### Running tests
+```bash
+cd backend
+npm test
+```
+The tests use their own temporary database, so they never change `backend/cloudpaw.db`, and they don't need the server running. They also run automatically in GitHub Actions on every push and pull request to `main`.
+
 ### Troubleshooting
 - **Segmentation fault, or `better-sqlite3` won't load:** delete `backend/node_modules` and run `npm install` again (from the `backend` folder). Check `node -v` shows Node 24 (run `nvm use`).
 - **`Cannot find module ... server.js`:** you're in the wrong folder. Run `cd backend` first.
