@@ -315,23 +315,88 @@ api.post('/inquiries', (req, res) => {
   }
 });
 
+// The fields returned for an application, with the pet's name. Shared by
+// GET /inquiries and PATCH /inquiries/:id so both return the same shape.
+// LEFT JOIN so an application is never dropped, even if its pet row is missing
+// (pet_name is then null).
+const INQUIRY_SELECT = `
+  SELECT i.id, i.pet_id, p.name AS pet_name, i.name, i.email, i.phone, i.city,
+         i.housing, i.yard, i.other_pets, i.reason, i.status, i.created_at
+  FROM inquiries i
+  LEFT JOIN pets p ON p.id = i.pet_id`;
+
 // Admin only: every saved application, newest first, with the pet's name.
-// LEFT JOIN so an application is never dropped from the list, even if its pet
-// row is missing (pet_name is then null).
 api.get('/inquiries', auth.requireAdmin, (req, res) => {
   // Contains applicants' personal details, so never let a browser or proxy cache it.
   res.set('Cache-Control', 'no-store');
   try {
-    const rows = db.prepare(`
-      SELECT i.id, i.pet_id, p.name AS pet_name, i.name, i.email, i.phone, i.city,
-             i.housing, i.yard, i.other_pets, i.reason, i.status, i.created_at
-      FROM inquiries i
-      LEFT JOIN pets p ON p.id = i.pet_id
-      ORDER BY i.created_at DESC, i.id DESC`).all();
+    const rows = db.prepare(`${INQUIRY_SELECT} ORDER BY i.created_at DESC, i.id DESC`).all();
     res.json(rows);
   } catch (err) {
     console.error('Failed to load inquiries:', err);
     res.status(500).json({ error: 'Could not load applications.' });
+  }
+});
+
+// Admin only: approve or deny a pending application. Body: { status }.
+//   approved -> the pet becomes "adopted", and the pet's other pending
+//               applications are denied automatically (same transaction).
+//   denied   -> only this application changes; the pet stays as it is.
+// Decisions are final: an application that is already approved or denied
+// can't be changed (409), and a pet that's already adopted can't be approved
+// for someone else (409).
+// -> 200 { application, autoDenied: [ids of applications denied automatically] }
+const DECISIONS = ['approved', 'denied'];
+
+api.patch('/inquiries/:id', auth.requireAdmin, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  if (!DECISIONS.includes(body.status)) {
+    return res.status(400).json({
+      error: 'Please fix the highlighted fields.',
+      fields: { status: 'Must be approved or denied.' },
+    });
+  }
+
+  // Same rule as GET /pets/:id: anything that isn't a positive whole number can't match.
+  const id = /^[1-9]\d*$/.test(req.params.id) ? Number(req.params.id) : null;
+
+  // All checks and updates run in one transaction, so two decisions made at
+  // the same moment can't both succeed. Returns { status, body } to send.
+  const decide = db.transaction(() => {
+    const inquiry = id && db.prepare('SELECT id, pet_id, status FROM inquiries WHERE id = ?').get(id);
+    if (!inquiry) return { status: 404, body: { error: 'Application not found' } };
+
+    if (inquiry.status !== 'pending') {
+      return { status: 409, body: { error: `This application has already been ${inquiry.status}.` } };
+    }
+
+    let autoDenied = [];
+    if (body.status === 'approved') {
+      const pet = db.prepare('SELECT status FROM pets WHERE id = ?').get(inquiry.pet_id);
+      if (pet && pet.status === 'adopted') {
+        return { status: 409, body: { error: 'This pet has already been adopted.' } };
+      }
+      db.prepare("UPDATE pets SET status = 'adopted' WHERE id = ?").run(inquiry.pet_id);
+      autoDenied = db.prepare(
+        "SELECT id FROM inquiries WHERE pet_id = ? AND id != ? AND status = 'pending' ORDER BY id"
+      ).all(inquiry.pet_id, inquiry.id).map((row) => row.id);
+      db.prepare(
+        "UPDATE inquiries SET status = 'denied' WHERE pet_id = ? AND id != ? AND status = 'pending'"
+      ).run(inquiry.pet_id, inquiry.id);
+    }
+
+    db.prepare('UPDATE inquiries SET status = ? WHERE id = ?').run(body.status, inquiry.id);
+    const application = db.prepare(`${INQUIRY_SELECT} WHERE i.id = ?`).get(inquiry.id);
+    return { status: 200, body: { application, autoDenied } };
+  });
+
+  try {
+    const result = decide();
+    res.status(result.status).json(result.body);
+  } catch (err) {
+    console.error('Failed to update inquiry:', err);
+    res.status(500).json({ error: 'Could not update the application. Please try again later.' });
   }
 });
 
