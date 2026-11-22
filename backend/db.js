@@ -1,6 +1,13 @@
 const Database = require('better-sqlite3');
 const fs = require('fs');
-const db = new Database(__dirname + '/cloudpaw.db');
+const path = require('path');
+
+// Which database file to open. Defaults to backend/cloudpaw.db. Set DB_PATH to
+// use a different file, e.g. the tests point it at a temporary database so they
+// never touch the real one. Applies to everything that uses this module
+// (server.js, seed.js, create-admin.js).
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'cloudpaw.db');
+const db = new Database(DB_PATH);
 db.exec(fs.readFileSync(__dirname + '/schema.sql', 'utf8'));
 
 // The old "applications" table was never used: adoption applications are saved
