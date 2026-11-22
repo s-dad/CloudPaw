@@ -63,6 +63,16 @@ npm test
 ```
 The tests use their own temporary database, so they never change `backend/cloudpaw.db`, and they don't need the server running. They also run automatically in GitHub Actions on every push and pull request to `main`.
 
+### Production mode
+API errors always come back as JSON with a short message and no internal details (the full error is logged on the server). To also run Express with its production settings, set `NODE_ENV`:
+```bash
+NODE_ENV=production npm start            # macOS / Linux
+$env:NODE_ENV="production"; npm start    # Windows PowerShell
+```
+
+### Rate limits
+Each IP address can make, per 15 minutes: 10 failed sign-ins, 5 sign-ups, 20 adoption applications and 20 contact messages. After that, the API answers `429 Too Many Requests` until the 15 minutes are up. Change the limits with `RATE_LIMIT_LOGIN`, `RATE_LIMIT_SIGNUP` and `RATE_LIMIT_FORMS` (for example `RATE_LIMIT_LOGIN=50 npm start`). The counts are kept in the server's memory and reset when it restarts; on AWS, API Gateway throttling will replace them.
+
 ### Troubleshooting
 - **Segmentation fault, or `better-sqlite3` won't load:** delete `backend/node_modules` and run `npm install` again (from the `backend` folder). Check `node -v` shows Node 24 (run `nvm use`).
 - **`Cannot find module ... server.js`:** you're in the wrong folder. Run `cd backend` first.
