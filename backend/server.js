@@ -681,19 +681,12 @@ api.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use('/api', api);
 
 /* ---------- Frontend ---------- */
-// The site's files sit in the repo root next to backend/, which holds the
-// database (users, password hashes, sessions). So never serve the root folder
-// as a whole: expose only the frontend, which is also the set of files to
-// upload to S3: the top-level *.html pages, css/, js/, images/ and data/.
-const SITE_ROOT = path.join(__dirname, '..');
-for (const dir of ['css', 'js', 'images', 'data']) {
-  app.use(`/${dir}`, express.static(path.join(SITE_ROOT, dir)));
-}
-// Top-level pages only: "/" -> index.html, "/pets.html", "/about.html", ...
-app.get(/^\/(?:[\w-]+\.html)?$/, (req, res, next) => {
-  const file = req.path === '/' ? 'index.html' : req.path.slice(1);
-  res.sendFile(file, { root: SITE_ROOT }, (err) => err && next());
-});
+// Everything in frontend/ is public, and it's the same set of files that goes
+// to S3. Nothing else is served, so backend/ (the database, with users,
+// password hashes and sessions) can't be reached. "/" -> index.html;
+// redirect: false keeps "/css" a 404 instead of redirecting to "/css/".
+const FRONTEND = path.join(__dirname, '..', 'frontend');
+app.use(express.static(FRONTEND, { redirect: false }));
 
 // Anything else that isn't a page or file: the site's 404 page, with status
 // 404 (unknown /api paths already got a JSON 404 above). On AWS, CloudFront
@@ -702,7 +695,7 @@ app.use((req, res) => {
   res.status(404);
   const notFoundText = () => res.type('text').send('Not found');
   if (req.method !== 'GET' && req.method !== 'HEAD') return notFoundText();
-  res.sendFile('404.html', { root: SITE_ROOT }, (err) => err && !res.headersSent && notFoundText());
+  res.sendFile('404.html', { root: FRONTEND }, (err) => err && !res.headersSent && notFoundText());
 });
 
 /* ---------- Errors ---------- */

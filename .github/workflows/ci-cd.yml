@@ -22,7 +22,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - name: Lint HTML
-        run: npx htmlhint@1.9.2 "**/*.html"
+        run: npx htmlhint@1.9.2 "frontend/**/*.html"
 
   test:
     runs-on: ubuntu-latest

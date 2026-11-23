@@ -17,7 +17,7 @@ Week 2-3 - Designed the database and built the pet listings API. Added search an
 
 Week 4 - Added login. Connecting the frontend to the API and planning the move to AWS.
 
-Not built yet: pet photo upload and image storage. The sample pets' photos are files in `images/pets/`. For other pets, admins paste a link to a photo (`https://` only), and pets without one show a default image.
+Not built yet: pet photo upload and image storage. The sample pets' photos are files in `frontend/images/pets/`. For other pets, admins paste a link to a photo (`https://` only), and pets without one show a default image.
 
 ## Getting Started
 
@@ -42,7 +42,7 @@ npm install
 ```bash
 node seed.js
 ```
-This creates `backend/cloudpaw.db` and loads the sample pets from `data/pets.json`. It's safe to run again: pets that are already there aren't added twice, and any missing age, sex or location is filled in from the file without changing values that are already set. Run it after pulling changes to `data/pets.json` to update an existing database.
+This creates `backend/cloudpaw.db` and loads the sample pets from `backend/data/pets.json`. It's safe to run again: pets that are already there aren't added twice, and any missing age, sex or location is filled in from the file without changing values that are already set. Run it after pulling changes to `backend/data/pets.json` to update an existing database.
 
 ### Create an admin account
 ```bash
@@ -94,12 +94,12 @@ Set them when starting the server (e.g. `PORT=8080 npm start`), or as the Lambda
 | `DB_PATH` | `backend/cloudpaw.db` | The SQLite database file. |
 | `RATE_LIMIT_LOGIN`, `RATE_LIMIT_SIGNUP`, `RATE_LIMIT_FORMS` | `10`, `5`, `20` per 15 minutes | See [Rate limits](#rate-limits). |
 
-### Frontend setting (`js/config.js`)
+### Frontend setting (`frontend/js/config.js`)
 | Setting | Default | What it does |
 |---|---|---|
 | `API_BASE` | `"/api"` | Where the browser sends API requests. `"/api"` means the API is on the same address as the site. |
 
-`js/config.js` is the only frontend file that differs between environments; nothing else needs editing.
+`frontend/js/config.js` is the only frontend file that differs between environments; nothing else needs editing.
 
 ### What to set on AWS
 The frontend is on S3 + CloudFront and the backend on API Gateway + Lambda, with **CloudFront forwarding `/api/*` to API Gateway**, so the site and the API share one address.
@@ -110,7 +110,7 @@ The frontend is on S3 + CloudFront and the backend on API Gateway + Lambda, with
 - Leave `LOG_REQUESTS` on, so the request lines reach CloudWatch.
 
 **Frontend (Shelley, S3 + CloudFront):**
-- Upload the top-level `*.html` pages and the `css/`, `js/`, `images/` and `data/` folders. `js/config.js` can stay as it is: `API_BASE` stays `"/api"`.
+- Upload the contents of the `frontend/` folder to the root of the bucket (so `frontend/index.html` becomes `index.html`), for example `aws s3 sync frontend/ s3://<your-bucket>/`. Nothing outside `frontend/` goes to S3. `js/config.js` can stay as it is: `API_BASE` stays `"/api"`.
 - In CloudFront, add a behavior for `/api/*` pointing at API Gateway, with caching disabled, all HTTP methods allowed, and the `Authorization` header and query strings forwarded.
 - Set a custom error response for 403 and 404 to `/404.html` with status 404.
 - Add a response headers policy with the same security headers Express sends locally, including this Content-Security-Policy:
@@ -119,7 +119,7 @@ The frontend is on S3 + CloudFront and the backend on API Gateway + Lambda, with
   ```
   plus `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN` and `Referrer-Policy: no-referrer`.
 
-If the frontend ever calls API Gateway on its own address instead: set `API_BASE` in `js/config.js` to that URL, set `ALLOWED_ORIGIN` to the CloudFront address, and add the API's address to `connect-src` in the Content-Security-Policy.
+If the frontend ever calls API Gateway on its own address instead: set `API_BASE` in `frontend/js/config.js` to that URL, set `ALLOWED_ORIGIN` to the CloudFront address, and add the API's address to `connect-src` in the Content-Security-Policy.
 
 ### Checking a deployment
 `GET /api/health` returns `200 {"status":"ok"}` when the API is up and the database answers, and `503` otherwise (the details are in the logs).

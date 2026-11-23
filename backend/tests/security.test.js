@@ -9,7 +9,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { startTestServer } = require('./helpers');
 
-const SITE_ROOT = path.join(__dirname, '..', '..');
+const FRONTEND = path.join(__dirname, '..', '..', 'frontend');
 
 let t;
 before(async () => { t = await startTestServer(); });
@@ -19,7 +19,7 @@ describe('only the public frontend is served', () => {
   // Sanity check, so the 404s below mean "blocked", not "server serves nothing".
   test('public pages and assets load', async () => {
     for (const p of [
-      '/', '/index.html', '/pets.html', '/admin-add.html', '/css/style.css', '/js/config.js', '/js/script.js', '/data/pets.json',
+      '/', '/index.html', '/pets.html', '/admin-add.html', '/css/style.css', '/js/config.js', '/js/script.js',
       '/images/logo.svg', '/images/favicon.svg', '/images/placeholder.svg',
     ]) {
       assert.equal(await t.rawGet(p), 200, p);
@@ -33,6 +33,7 @@ describe('only the public frontend is served', () => {
     '/backend/server.js',
     '/backend/package.json',
     '/backend/schema.sql',
+    '/backend/data/pets.json',
     '/backend/node_modules/express/package.json',
     '/README.md',
     '/.nvmrc',
@@ -44,12 +45,15 @@ describe('only the public frontend is served', () => {
     });
   }
 
-  // "../" tricks to climb out of a public folder, sent exactly as written.
+  // "../" tricks to climb out of frontend/, sent exactly as written.
   const pathTricks = [
     '/css/../backend/cloudpaw.db',
     '/css/../backend/package.json',
     '/images/%2e%2e/backend/package.json',
-    '/data/..%2fbackend%2fpackage.json',
+    '/..%2fbackend%2fpackage.json',
+    '/%2e%2e/README.md',
+    '/js/..%2f..%2fbackend%2fserver.js',
+    '/css/../../backend/package.json',
     '/css/%2e%2e%2fREADME.md',
   ];
   for (const p of pathTricks) {
@@ -174,7 +178,7 @@ describe('404 page', () => {
   const NOT_FOUND = "We couldn't find that page";
 
   test('unknown pages, deep addresses and missing files get the 404 page with status 404', async () => {
-    for (const p of ['/nope.html', '/pets', '/a/b/c', '/images/nope.png', '/css/nope.css']) {
+    for (const p of ['/nope.html', '/pets', '/a/b/c', '/images/nope.png', '/css/nope.css', '/css', '/images/pets/']) {
       const res = await t.api('GET', p);
       assert.equal(res.status, 404, p);
       assert.match(res.headers.get('content-type'), /text\/html/, p);
@@ -213,9 +217,9 @@ describe('nothing in the frontend that the CSP would block', () => {
   // The CSP allows scripts and styles only from files (no 'unsafe-inline'), so
   // inline code in the pages or in HTML built by script.js would be blocked in
   // the browser. Checked against the files themselves.
-  const pages = fs.readdirSync(SITE_ROOT).filter((f) => f.endsWith('.html'));
-  const scripts = fs.readdirSync(path.join(SITE_ROOT, 'js')).filter((f) => f.endsWith('.js'));
-  const read = (...parts) => fs.readFileSync(path.join(SITE_ROOT, ...parts), 'utf8');
+  const pages = fs.readdirSync(FRONTEND).filter((f) => f.endsWith('.html'));
+  const scripts = fs.readdirSync(path.join(FRONTEND, 'js')).filter((f) => f.endsWith('.js'));
+  const read = (...parts) => fs.readFileSync(path.join(FRONTEND, ...parts), 'utf8');
   const withoutComments = (html) => html.replace(/<!--[\s\S]*?-->/g, '');
 
   test('the site has the pages and scripts this checks', () => {

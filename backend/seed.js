@@ -1,9 +1,9 @@
 /* =============================================================================
-   CloudPaw — load the sample pets from data/pets.json
+   CloudPaw — load the sample pets from backend/data/pets.json
 
    Usage (from the backend folder):  node seed.js
 
-   Safe to run more than once. For each pet in data/pets.json, matched by name:
+   Safe to run more than once. For each pet in backend/data/pets.json, matched by name:
      - not in the database yet: it's added
      - already there: only its empty age, sex and location are filled in from
        the file. Values that are already set are never changed, so edits made
@@ -12,7 +12,7 @@
    ============================================================================= */
 
 const db = require('./db');
-const raw = require('../data/pets.json');
+const raw = require('./data/pets.json');
 const pets = Array.isArray(raw) ? raw : raw.pets;
 
 // The columns filled in for pets that already exist.
@@ -68,6 +68,6 @@ const seed = db.transaction(() => {
 
 const { added, updated, unchanged } = seed();
 console.log(
-  `Seeded pets from data/pets.json: ${added} added, ${updated} updated ` +
+  `Seeded pets from backend/data/pets.json: ${added} added, ${updated} updated ` +
   `(missing age, sex or location filled in), ${unchanged} already up to date.`
 );

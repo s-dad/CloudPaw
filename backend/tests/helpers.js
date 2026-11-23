@@ -5,7 +5,7 @@
      1. creates a temporary folder with an empty database file
      2. points DB_PATH at it BEFORE the app is loaded, so the real
         backend/cloudpaw.db is never opened
-     3. seeds it with the real seed.js (the 6 pets from data/pets.json)
+     3. seeds it with the real seed.js (the 6 pets from backend/data/pets.json)
      4. starts the app on a free port (port 0 = let the OS pick)
    stop() closes the server and database and deletes the temporary folder.
 

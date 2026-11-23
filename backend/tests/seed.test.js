@@ -109,7 +109,7 @@ describe('node seed.js', () => {
     assert.equal(pets.Bella.location, 'Cincinnati, OH', 'an empty string counts as missing');
   });
 
-  test('leaves pets that are not in data/pets.json alone', () => {
+  test('leaves pets that are not in backend/data/pets.json alone', () => {
     const dbPath = newDbPath();
     runSeed(dbPath);
     edit(dbPath, "INSERT INTO pets (name, species) VALUES ('Biscuit', 'Dog')");
