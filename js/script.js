@@ -1,16 +1,19 @@
 /* =============================================================================
    CloudPaw — front-end controller (shared by every page)
-   Fetches pet listings from a configurable API endpoint.
-   API_BASE is relative ("/api") because backend/server.js serves both this
-   site and the API from http://localhost:3000.
-   In AWS:  point API_BASE at your API Gateway invoke URL.
+   The API's address comes from js/config.js (loaded first), so it can differ
+   between local and AWS without editing this file.
 
    Each page sets <body data-page="..."> and the matching init function below
    runs: home, pets, pet, adopt, about.
    ============================================================================= */
 
+// "/api" if js/config.js is missing or its value isn't usable text. A trailing
+// "/" is dropped, since paths like "/pets" are added to it.
+const configuredApiBase = window.CLOUDPAW_CONFIG?.API_BASE;
 const CONFIG = {
-  API_BASE: "/api",
+  API_BASE: typeof configuredApiBase === "string" && configuredApiBase.trim()
+    ? configuredApiBase.trim().replace(/\/+$/, "")
+    : "/api",
 };
 
 const PLACEHOLDER_IMAGE = "images/placeholder.svg";
