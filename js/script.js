@@ -856,48 +856,136 @@ const pages = {
     }
   },
 
-  // "Ask AI" demo chat. Answers are hard-coded for now.
-  // (Moved here from an inline <script> in chatbot.html so the
-  // Content-Security-Policy can block all inline scripts.)
-  chatbot() {
-    const chatForm = document.getElementById("chat-form");
-    const chatInput = document.getElementById("chat-input");
-    const chatMessages = document.getElementById("chat-messages");
-
-    chatForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const userText = chatInput.value.trim();
-      if (!userText) return;
-
-      // 1. Add the user's message to the screen
-      const userMsg = document.createElement("div");
-      userMsg.className = "message user";
-      userMsg.textContent = userText;
-      chatMessages.appendChild(userMsg);
-
-      chatInput.value = "";
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-
-      // 2. Simulate the AI thinking (this is where Bedrock will go later)
-      setTimeout(() => {
-        const botMsg = document.createElement("div");
-        botMsg.className = "message bot";
-
-        // Fake AI logic for the demo
-        if (userText.toLowerCase().includes("luna")) {
-          botMsg.textContent = "Luna is a 2-year-old female Labrador Retriever in Columbus, OH. She is friendly, high-energy, and loves fetching tennis balls!";
-        } else if (userText.toLowerCase().includes("cat")) {
-          botMsg.textContent = "We currently have Milo and Oliver available. Milo is a laid-back 3-year-old tabby in Cleveland, OH, and Oliver is a gentle 4-year-old Maine Coon in Dayton, OH.";
-        } else {
-          botMsg.textContent = "That's a great question! Once I am connected to AWS Bedrock, I will search our database and documents to give you a detailed answer.";
-        }
-
-        chatMessages.appendChild(botMsg);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-      }, 1000); // 1 second delay to simulate AI processing
-    });
-  },
 };
+
+/* ---------- Chat widget ("Ask AI", every page) ---------- */
+// A floating "Ask AI" button in the bottom-right corner opens a small chat box
+// above it. The answers are written here (no AI service is connected).
+// The conversation and whether the box is open are kept in sessionStorage, so
+// they carry over between pages in the same tab and are cleared when the tab
+// closes. Nothing is sent to the server.
+const CHAT_STORAGE_KEY = "cloudpaw.chat";
+const CHAT_GREETING = "Hi! Ask me about adopting a pet.";
+const CHAT_MAX_SAVED = 50; // messages kept between pages
+
+// The assistant's answer to one message.
+function chatReply(text) {
+  const t = text.toLowerCase();
+  if (t.includes("luna")) {
+    return "Luna is a 2-year-old female Labrador Retriever in Columbus, OH. She is friendly, high-energy, and loves fetching tennis balls!";
+  }
+  if (t.includes("cat")) {
+    return "We currently have Milo and Oliver available. Milo is a laid-back 3-year-old tabby in Cleveland, OH, and Oliver is a gentle 4-year-old Maine Coon in Dayton, OH.";
+  }
+  return "I can tell you about Luna or our cats. To see every pet, try Find a Pet, or send us a message from the About page.";
+}
+
+function loadChat() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CHAT_STORAGE_KEY) || "null");
+    if (saved && Array.isArray(saved.messages) && saved.messages.length) return saved;
+  } catch {
+    // Storage blocked or unreadable: start a new conversation.
+  }
+  return { open: false, messages: [{ from: "bot", text: CHAT_GREETING }] };
+}
+
+function saveChat(state) {
+  try {
+    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
+      open: state.open,
+      messages: state.messages.slice(-CHAT_MAX_SAVED),
+    }));
+  } catch {
+    // Storage blocked: the chat still works, it just won't carry over.
+  }
+}
+
+const PAW_SVG = `
+  <svg viewBox="0 0 64 64" width="22" height="22" aria-hidden="true" focusable="false">
+    <g fill="currentColor">
+      <ellipse cx="32" cy="40" rx="11" ry="9.5"/>
+      <ellipse cx="18.5" cy="27" rx="4.5" ry="5.8"/><ellipse cx="27" cy="20" rx="4.5" ry="5.8"/>
+      <ellipse cx="37" cy="20" rx="4.5" ry="5.8"/><ellipse cx="45.5" cy="27" rx="4.5" ry="5.8"/>
+    </g>
+  </svg>`;
+
+function initChatWidget() {
+  const widget = document.createElement("div");
+  widget.className = "chat-widget";
+  widget.innerHTML = `
+    <section id="chat-panel" class="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>
+      <header class="chat-panel__header">
+        ${PAW_SVG}
+        <h2 id="chat-title" class="chat-panel__title">CloudPaw assistant</h2>
+        <button type="button" class="chat-panel__close" data-chat="close" aria-label="Close chat">×</button>
+      </header>
+      <div class="chat-panel__messages" role="log" aria-live="polite"></div>
+      <form class="chat-panel__form">
+        <label class="visually-hidden" for="chat-input">Your message</label>
+        <input id="chat-input" name="message" type="text" maxlength="500" autocomplete="off"
+               placeholder="Ask about adopting a pet…" />
+        <button type="submit" class="btn btn-primary">Send</button>
+      </form>
+    </section>
+    <button type="button" class="chat-launcher" aria-controls="chat-panel" aria-expanded="false">
+      ${PAW_SVG}<span>Ask AI</span>
+    </button>`;
+  document.body.append(widget);
+
+  const panel = widget.querySelector("#chat-panel");
+  const launcher = widget.querySelector(".chat-launcher");
+  const list = widget.querySelector(".chat-panel__messages");
+  const form = widget.querySelector(".chat-panel__form");
+  const input = form.elements.message;
+  const state = loadChat();
+
+  // Messages are added with textContent, so whatever someone types is shown
+  // as plain text.
+  const addBubble = ({ from, text }) => {
+    const bubble = document.createElement("p");
+    bubble.className = `message message--${from === "user" ? "user" : "bot"}`;
+    bubble.textContent = text;
+    list.append(bubble);
+    list.scrollTop = list.scrollHeight;
+  };
+  const addMessage = (message) => {
+    state.messages.push(message);
+    addBubble(message);
+    saveChat(state);
+  };
+
+  const setOpen = (open, { focus = true } = {}) => {
+    state.open = open;
+    panel.hidden = !open;
+    launcher.setAttribute("aria-expanded", String(open));
+    saveChat(state);
+    if (!focus) return;
+    if (open) input.focus();
+    else launcher.focus();
+  };
+
+  state.messages.forEach(addBubble);
+  // Reopen on the next page if it was open, without moving the focus there.
+  setOpen(state.open, { focus: false });
+  list.scrollTop = list.scrollHeight;
+
+  launcher.addEventListener("click", () => setOpen(panel.hidden));
+  widget.querySelector('[data-chat="close"]').addEventListener("click", () => setOpen(false));
+  panel.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    addMessage({ from: "user", text });
+    // A short pause before answering, so the reply doesn't appear instantly.
+    setTimeout(() => addMessage({ from: "bot", text: chatReply(text) }), 600);
+  });
+}
 
 /* ---------- Shared events ---------- */
 // Swap in the placeholder when a pet photo is missing. Image errors don't
@@ -931,4 +1019,5 @@ document.addEventListener("click", (e) => {
 // confirmed it (an expired session switches back to "Sign In").
 renderAuthNav();
 checkAuth().then(renderAuthNav);
+initChatWidget();
 pages[document.body.dataset.page]?.();
