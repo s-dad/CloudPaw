@@ -5,7 +5,68 @@ const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const db = require('./db');
 const auth = require('./auth');
+
+/* ---------- Settings ---------- */
+// Everything that differs between running locally and on AWS comes from
+// environment variables. Unset means today's local behavior. (DB_PATH is read
+// in db.js; the RATE_LIMIT_* values are read with the rate limits below.)
+// An invalid value stops the server at startup with a clear message, instead
+// of quietly running with a setting nobody intended.
+
+// PORT: where `npm start` listens (0 lets the operating system pick).
+// Not used on Lambda, where API Gateway calls the app directly.
+function readPort(raw) {
+  if (raw === undefined || raw === '') return 3000;
+  if (!/^\d+$/.test(raw) || Number(raw) > 65535) {
+    throw new Error(`PORT must be a whole number from 0 to 65535 (got "${raw}").`);
+  }
+  return Number(raw);
+}
+
+// ALLOWED_ORIGIN: comma-separated list of sites allowed to call the API from a
+// browser, e.g. "http://localhost:3000,https://d1234.cloudfront.net".
+// Unset: any site may (Access-Control-Allow-Origin: *), as before. On AWS, set
+// it to the CloudFront address so only the real site can call the API.
+function readOrigins(raw) {
+  if (raw === undefined || raw.trim() === '') return null;
+  const entries = raw.split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (!entries.length) throw new Error('ALLOWED_ORIGIN is set but lists no addresses.');
+  return entries.map((entry) => {
+    let url = null;
+    try {
+      url = new URL(entry);
+    } catch {
+      // handled below
+    }
+    const ok = url && ['http:', 'https:'].includes(url.protocol)
+      && url.origin === entry.replace(/\/$/, '').toLowerCase();
+    if (!ok) {
+      throw new Error(
+        `ALLOWED_ORIGIN entries must be an address like https://example.com or http://localhost:3000, with no path (got "${entry}").`,
+      );
+    }
+    return url.origin;
+  });
+}
+
+const config = {
+  port: readPort(process.env.PORT),
+  // HOST: which network address to listen on. Unset: every interface, IPv4 and
+  // IPv6 (Node's default when no host is given), as before. 127.0.0.1 = this
+  // computer only. Not used on Lambda.
+  host: process.env.HOST || undefined,
+  // NODE_ENV: "production" makes Express and its libraries use their
+  // production settings. API errors never include details either way.
+  nodeEnv: process.env.NODE_ENV || 'development',
+  allowedOrigins: readOrigins(process.env.ALLOWED_ORIGIN),
+};
+
+if (config.nodeEnv === 'production' && !config.allowedOrigins) {
+  console.warn('Warning: NODE_ENV is production but ALLOWED_ORIGIN is not set, so any website can call this API from a browser.');
+}
+
 const app = express();
+app.locals.config = config; // for tests
 
 // Security headers on every response (helmet's defaults), plus a
 // Content-Security-Policy that only lets the browser load what the site uses.
@@ -42,7 +103,10 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// CORS: which other sites may call the API from a browser (see ALLOWED_ORIGIN).
+// The site itself is served from the same address as the API, so it doesn't
+// need CORS locally. Tokens go in the Authorization header, not cookies.
+app.use(cors(config.allowedOrigins ? { origin: config.allowedOrigins } : {}));
 app.use(express.json());
 
 // All JSON API routes live under /api (e.g. /api/pets), so they can never
@@ -607,8 +671,15 @@ app.use((err, req, res, next) => {
 
 module.exports = app;
 
-// Listen on port 3000 only when this file is run directly (node server.js or
-// npm start). Tests require it instead and start the app on a free port.
+// Listen only when this file is run directly (node server.js or npm start).
+// Tests require it instead and start the app on a free port; on Lambda a
+// handler will call the app without listening at all.
 if (require.main === module) {
-  app.listen(3000, () => console.log('CloudPaw on http://localhost:3000 (API at /api)'));
+  const { port, host } = config;
+  const onListening = () => {
+    const shown = !host || host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
+    console.log(`CloudPaw on http://${shown}:${server.address().port} (API at /api)`);
+  };
+  // No host given = every interface, IPv4 and IPv6, as before.
+  const server = host ? app.listen(port, host, onListening) : app.listen(port, onListening);
 }
