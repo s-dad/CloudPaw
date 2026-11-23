@@ -864,23 +864,105 @@ const pages = {
 
 /* ---------- Chat widget ("Ask AI", every page) ---------- */
 // A floating "Ask AI" button in the bottom-right corner opens a small chat box
-// above it. The answers are written here (no AI service is connected).
+// above it. No AI service is connected: replies are built here from the
+// available pets (GET /api/pets, loaded on the first message and reused).
 // The conversation and whether the box is open are kept in sessionStorage, so
 // they carry over between pages in the same tab and are cleared when the tab
-// closes. Nothing is sent to the server.
+// closes. Messages typed into the chat are never sent to the server.
 const CHAT_STORAGE_KEY = "cloudpaw.chat";
 const CHAT_GREETING = "Hi! Ask me about adopting a pet.";
 const CHAT_MAX_SAVED = 50; // messages kept between pages
+const CHAT_FALLBACK = [
+  { text: "Ask me about any of our pets by name, or ask about our dogs or cats. To browse everything, try " },
+  { text: "Find a Pet", href: "pets.html" },
+  { text: ", or send us a message from the " },
+  { text: "About page", href: "about.html" },
+  { text: "." },
+];
+// The only links a reply may contain (checked again when a saved chat is shown).
+const CHAT_LINK = /^(?:pets\.html|about\.html|pet\.html\?id=\d+|adopt\.html\?pet=\d+)$/;
 
-function chatReply(text) {
+// The available pets, loaded once per page. A failed load isn't kept, so the
+// next message tries again; until then replies fall back to CHAT_FALLBACK.
+let chatPets = null;
+function loadChatPets() {
+  chatPets ??= fetchPets()
+    .then((pets) => (Array.isArray(pets) ? pets : []))
+    .catch(() => {
+      chatPets = null;
+      return null;
+    });
+  return chatPets;
+}
+
+// True if `word` appears in `text` as a whole word (both lowercase).
+function hasWord(text, word) {
+  if (!word) return false;
+  const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "u").test(text);
+}
+
+// "Milo is a cat (Tabby), 3 years old, male, in Cleveland, OH." Missing values
+// are said to be unknown rather than left out silently.
+function describePet(pet) {
+  const species = String(pet.species || "pet").toLowerCase();
+  const breed = pet.breed ? ` (${pet.breed})` : "";
+  const age = typeof pet.age !== "number" ? "age unknown"
+    : pet.age < 1 ? "under 1 year old"
+    : `${pet.age} ${pet.age === 1 ? "year" : "years"} old`;
+  const sex = pet.sex && pet.sex !== "Unknown" ? pet.sex.toLowerCase() : "sex unknown";
+  const city = pet.location ? `in ${pet.location}` : "location unknown";
+  const article = /^[aeiou]/.test(species) ? "an" : "a";
+  return `${pet.name} is ${article} ${species}${breed}, ${age}, ${sex}, ${city}. `;
+}
+
+// Replies to a message. Returns one or more bot messages, each a list of
+// parts: { text } or { text, href } for a link. `pets` is null if they
+// couldn't be loaded.
+function chatReply(text, pets) {
+  const fallback = [CHAT_FALLBACK];
+  if (!pets) return fallback;
   const t = text.toLowerCase();
-  if (t.includes("luna")) {
-    return "Luna is a 2-year-old female Labrador Retriever in Columbus, OH. She is friendly, high-energy, and loves fetching tennis balls!";
+  const findAPet = { text: "Find a Pet", href: "pets.html" };
+
+  // A pet mentioned by name: its details and links.
+  const named = pets.filter((p) => hasWord(t, String(p.name || "").trim().toLowerCase()));
+  if (named.length) {
+    return named.slice(0, 3).map((pet) => [
+      { text: describePet(pet) },
+      { text: `See ${pet.name}'s page`, href: `pet.html?id=${encodeURIComponent(pet.id)}` },
+      { text: " · " },
+      { text: `Apply to adopt ${pet.name}`, href: `adopt.html?pet=${encodeURIComponent(pet.id)}` },
+    ]);
   }
-  if (t.includes("cat")) {
-    return "We currently have Milo and Oliver available. Milo is a laid-back 3-year-old tabby in Cleveland, OH, and Oliver is a gentle 4-year-old Maine Coon in Dayton, OH.";
+
+  // Dogs or cats: the available ones, each linking to its page.
+  const species = [["dog", "dogs"], ["cat", "cats"]].filter(([one, many]) => hasWord(t, one) || hasWord(t, many));
+  if (species.length) {
+    return species.map(([one, many]) => {
+      const matches = pets.filter((p) => String(p.species || "").toLowerCase() === one);
+      if (!matches.length) {
+        return [{ text: `We don't have any ${many} available right now. New pets are added often, so check ` }, findAPet, { text: " again soon." }];
+      }
+      const parts = [{ text: `Available ${many}: ` }];
+      matches.forEach((pet, i) => {
+        if (i) parts.push({ text: ", " });
+        parts.push({ text: pet.name, href: `pet.html?id=${encodeURIComponent(pet.id)}` });
+      });
+      parts.push({ text: "." });
+      return parts;
+    });
   }
-  return "I can tell you about Luna or our cats. To see every pet, try Find a Pet, or send us a message from the About page.";
+
+  // How to adopt or apply.
+  if (/\b(?:adopt|adoption|adopting|apply|applying|application)\b/.test(t)) {
+    return [[
+      { text: "To adopt: browse " }, findAPet,
+      { text: " and open a pet's page, choose Apply to Adopt, and fill in the short form (no account needed). The shelter will contact you within 2–3 business days." },
+    ]];
+  }
+
+  return fallback;
 }
 
 function loadChat() {
@@ -943,12 +1025,27 @@ function initChatWidget() {
   const input = form.elements.message;
   const state = loadChat();
 
-  // Messages are added with textContent, so whatever someone types is shown
-  // as plain text.
-  const addBubble = ({ from, text }) => {
+  // Messages are built with textContent and createElement, never innerHTML,
+  // so what someone types, and pet names from the database, show as plain
+  // text. A message is { from, text } or a bot reply { from, parts }.
+  const addBubble = ({ from, text, parts }) => {
     const bubble = document.createElement("p");
     bubble.className = `message message--${from === "user" ? "user" : "bot"}`;
-    bubble.textContent = text;
+    if (from !== "user" && Array.isArray(parts)) {
+      for (const part of parts) {
+        if (!part || typeof part.text !== "string") continue;
+        if (typeof part.href === "string" && CHAT_LINK.test(part.href)) {
+          const link = document.createElement("a");
+          link.href = part.href;
+          link.textContent = part.text;
+          bubble.append(link);
+        } else {
+          bubble.append(part.text);
+        }
+      }
+    } else {
+      bubble.textContent = typeof text === "string" ? text : "";
+    }
     list.append(bubble);
     list.scrollTop = list.scrollHeight;
   };
@@ -985,8 +1082,12 @@ function initChatWidget() {
     if (!text) return;
     input.value = "";
     addMessage({ from: "user", text });
-    // A short pause before answering, so the reply doesn't appear instantly.
-    setTimeout(() => addMessage({ from: "bot", text: chatReply(text) }), 600);
+    // Answer after the pets have loaded and a short pause, so the reply
+    // doesn't appear instantly.
+    const pause = new Promise((resolve) => setTimeout(resolve, 600));
+    Promise.all([loadChatPets(), pause]).then(([pets]) => {
+      for (const parts of chatReply(text, pets)) addMessage({ from: "bot", parts });
+    });
   });
 }
 
