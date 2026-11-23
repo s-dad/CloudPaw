@@ -571,6 +571,43 @@ textarea[aria-invalid="true"] {
   border: 1px solid var(--color-border);
 }
 
+/* Photo column: the photo, plus "Admin: change photo" below it for admins. */
+.pet-detail__media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.photo-edit {
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.photo-edit__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.photo-edit__row input {
+  flex: 1 1 14rem;
+}
+.photo-edit__row .field-error {
+  flex-basis: 100%;
+  order: 3;
+}
+/* Its status line: left-aligned and no empty space when there's no message
+   (still in the page, so screen readers announce new messages). */
+.photo-edit .status {
+  margin-top: var(--space-2);
+  min-height: 0;
+  text-align: left;
+}
+.photo-edit .status:empty {
+  margin: 0;
+}
+
 .pet-detail__body {
   display: flex;
   flex-direction: column;

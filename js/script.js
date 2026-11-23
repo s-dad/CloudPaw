@@ -322,15 +322,38 @@ const petCardHtml = (pet) => `
     </div>
   </article>`;
 
+// Admins only: change the pet's photo link under the photo (PATCH /api/pets/:id).
+// Shows the current link, which for the sample pets is a file on this site.
+// novalidate: wirePhotoEdit runs the browser's checks itself, after the
+// "unchanged" check, since a site file path isn't a valid https:// link.
+const photoEditHtml = (pet) => `
+  <form id="photo-edit-form" class="photo-edit" novalidate aria-label="Change ${escapeHtml(pet.name)}'s photo">
+    <div class="field">
+      <label for="photo-edit-url">Admin: change photo</label>
+      <div class="photo-edit__row">
+        <input type="url" id="photo-edit-url" name="photo_url" maxlength="2000"
+               pattern="https://.*" title="A full link that starts with https://"
+               placeholder="https://…" value="${escapeHtml(pet.photo_url || "")}"
+               aria-describedby="photo-edit-hint" />
+        <button type="submit" class="btn btn-primary">Save photo</button>
+      </div>
+      <p id="photo-edit-hint" class="field-hint">Paste a link that starts with https://, or clear the box to show the default image.</p>
+    </div>
+    <p id="photo-edit-status" class="status" role="status" aria-live="polite"></p>
+  </form>`;
+
 // An adopted pet's page still loads (old links keep working), but shows that
 // the pet has been adopted instead of the Apply button.
 const petDetailHtml = (pet) => `
   <article class="pet-detail">
-    <img
-      class="pet-detail__image"
-      src="${escapeHtml(pet.photo_url ? pet.photo_url : 'images/pets/' + pet.name.toLowerCase() + '.jpg')}"
-      alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
-    />
+    <div class="pet-detail__media">
+      <img
+        class="pet-detail__image"
+        src="${escapeHtml(pet.photo_url ? pet.photo_url : 'images/pets/' + pet.name.toLowerCase() + '.jpg')}"
+        alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
+      />
+      ${isAdmin() ? photoEditHtml(pet) : ""}
+    </div>
     <div class="pet-detail__body">
       <p class="eyebrow">${escapeHtml(pet.species)} · ${escapeHtml(pet.breed || "Mixed")}</p>
       <h1>${escapeHtml(pet.name)}</h1>
@@ -458,6 +481,70 @@ function wireApplicationDecisions(tbody, statusEl, apps) {
   });
 }
 
+// "Admin: change photo" on pet.html. Sends PATCH /api/pets/:id with the admin's
+// token and swaps the photo without reloading. Saving an unchanged link sends
+// nothing (so the sample pets' site photos can't be wiped by accident), and
+// clearing the box asks first. A link that doesn't load shows the default image.
+function wirePhotoEdit(pet) {
+  const form = document.getElementById("photo-edit-form");
+  const input = form.elements.photo_url;
+  const button = form.querySelector("[type=submit]");
+  const statusEl = document.getElementById("photo-edit-status");
+  const image = document.querySelector(".pet-detail__image");
+  let current = pet.photo_url || "";
+  const setStatus = (message, isError = false) => {
+    statusEl.textContent = message;
+    statusEl.classList.toggle("status--error", isError);
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearFieldErrors(form);
+    setStatus("");
+    const value = input.value.trim();
+    if (value === current) {
+      setStatus("Nothing to save: the link hasn't changed.");
+      return;
+    }
+    if (!value && !window.confirm(`Remove ${pet.name}'s photo? The default image will show instead.`)) return;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    button.disabled = true;
+    setStatus("Saving…");
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/pets/${encodeURIComponent(pet.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ photo_url: value }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        // Session expired or no longer an admin: sign in again.
+        if (res.status === 401) clearAuth();
+        goToSignIn();
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        current = body.photo_url || "";
+        input.value = current;
+        image.src = current || PLACEHOLDER_IMAGE;
+        setStatus(current ? "Photo updated." : "Photo removed. The default image is showing.");
+        return;
+      }
+      if (body.fields?.photo_url) showFieldError(input, body.fields.photo_url);
+      setStatus(body.error || "Could not update the photo. Please try again.", true);
+    } catch (err) {
+      console.error(err);
+      setStatus("We couldn't reach the server. Please try again later.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 const skeletons = (count) =>
   Array.from({ length: count }).map(() => `<div class="skeleton"></div>`).join("");
 
@@ -579,6 +666,7 @@ const pages = {
       document.title = `${pet.name} | CloudPaw`;
       container.innerHTML = petDetailHtml(pet);
       statusEl.textContent = "";
+      if (document.getElementById("photo-edit-form")) wirePhotoEdit(pet);
     } catch (err) {
       console.error(err);
       container.innerHTML = "";
@@ -696,8 +784,8 @@ const pages = {
         return;
       }
 
-      // Named fields only: name, species, breed, age, location, description.
-      // (The photo input has no name yet; uploads aren't supported by the API.)
+      // Named fields: name, species, breed, age, sex, location, photo_url
+      // (the Image URL field) and description.
       const data = Object.fromEntries(new FormData(form));
       submitBtn.disabled = true;
       setStatus("Saving…");

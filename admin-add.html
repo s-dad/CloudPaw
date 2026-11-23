@@ -98,9 +98,11 @@
           </div>
 
           <div class="field field--full">
-            <label for="pet-photo">Upload Photo</label>
-            <input type="file" id="pet-photo" accept="image/*" aria-describedby="pet-photo-hint" />
-            <p id="pet-photo-hint" class="field-hint">Photo uploads aren't connected yet, so new pets show a placeholder image.</p>
+            <label for="pet-photo-url">Image URL</label>
+            <input type="url" id="pet-photo-url" name="photo_url" maxlength="2000"
+                   pattern="https://.*" title="A full link that starts with https://"
+                   placeholder="https://…" aria-describedby="pet-photo-hint" />
+            <p id="pet-photo-hint" class="field-hint">Optional. Paste a link to the pet's photo that starts with https://. If the link doesn't load, the site shows a default image.</p>
           </div>
 
           <div class="field field--full">
