@@ -991,6 +991,18 @@ function initChatWidget() {
 }
 
 /* ---------- Shared events ---------- */
+// "Skip to main content": move keyboard focus to <main> directly. A plain
+// href="#main" doesn't work on 404.html, whose <base href="/"> would turn it
+// into "/#main" and open the home page.
+document.querySelector(".skip-link")?.addEventListener("click", (e) => {
+  const main = document.getElementById("main");
+  if (!main) return;
+  e.preventDefault();
+  if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+  main.focus();
+  main.scrollIntoView();
+});
+
 // Swap in the placeholder when a pet photo is missing. Image errors don't
 // bubble, so listen in the capture phase.
 document.addEventListener(

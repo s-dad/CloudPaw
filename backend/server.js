@@ -692,6 +692,16 @@ app.get(/^\/(?:[\w-]+\.html)?$/, (req, res, next) => {
   res.sendFile(file, { root: SITE_ROOT }, (err) => err && next());
 });
 
+// Anything else that isn't a page or file: the site's 404 page, with status
+// 404 (unknown /api paths already got a JSON 404 above). On AWS, CloudFront
+// serves the same 404.html as its error page.
+app.use((req, res) => {
+  res.status(404);
+  const notFoundText = () => res.type('text').send('Not found');
+  if (req.method !== 'GET' && req.method !== 'HEAD') return notFoundText();
+  res.sendFile('404.html', { root: SITE_ROOT }, (err) => err && !res.headersSent && notFoundText());
+});
+
 /* ---------- Errors ---------- */
 // The one place errors end up, instead of Express's HTML error page (which
 // includes the stack trace unless NODE_ENV=production). Replies are always

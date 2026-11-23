@@ -970,6 +970,19 @@ textarea[aria-invalid="true"] {
   margin-right: var(--space-2);
 }
 
+/* 404.html: Home and Find a Pet side by side, wrapping on narrow screens. */
+.not-found__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+/* "Skip to main content" focuses <main> (script.js); it isn't interactive,
+   so no focus outline around the whole page content. */
+#main:focus {
+  outline: none;
+}
+
 /* ==========================================================================
    Chat widget ("Ask AI" on every page, built by script.js)
    Above the sticky header (100), below the skip link (1000).
