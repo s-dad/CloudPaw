@@ -1,4 +1,8 @@
-name: CI/CD
+# Lint and test every push and pull request to main. Nothing is deployed from
+# here: the frontend moves to S3 + CloudFront and the backend to API Gateway +
+# Lambda, and their deploy jobs come with that migration. (The old GitHub Pages
+# deploy was removed: the site there could never reach an API.)
+name: CI
 
 on:
   push:
@@ -8,8 +12,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
   lint:
@@ -36,27 +38,3 @@ jobs:
         run: npm ci
       - name: Run backend tests
         run: npm test
-
-  deploy:
-    needs: [lint, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/configure-pages@v5
-      # Publish only the frontend (allowlist). backend/, .github/ and any other
-      # files are never copied, so they can't end up on the public site.
-      - name: Collect frontend files
-        run: |
-          mkdir _site
-          cp *.html _site/
-          cp -r css js images data _site/
-          echo "Publishing:" && find _site -type f | sort
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - id: deployment
-        uses: actions/deploy-pages@v4

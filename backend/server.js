@@ -680,8 +680,8 @@ app.use('/api', api);
 /* ---------- Frontend ---------- */
 // The site's files sit in the repo root next to backend/, which holds the
 // database (users, password hashes, sessions). So never serve the root folder
-// as a whole: expose only the frontend, the same allowlist the CI deploy uses
-// (*.html, css/, js/, images/, data/).
+// as a whole: expose only the frontend, which is also the set of files to
+// upload to S3: the top-level *.html pages, css/, js/, images/ and data/.
 const SITE_ROOT = path.join(__dirname, '..');
 for (const dir of ['css', 'js', 'images', 'data']) {
   app.use(`/${dir}`, express.static(path.join(SITE_ROOT, dir)));
