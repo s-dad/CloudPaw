@@ -86,6 +86,41 @@ describe('POST /api/pets (admin only)', () => {
     assert.equal(res.status, 400);
     assert.equal(res.body.fields.age, 'Must be 100 or lower.');
   });
+
+  test('saves sex as Male, Female or Unknown', async () => {
+    for (const sex of ['Male', 'Female', 'Unknown']) {
+      const res = await t.api('POST', '/api/pets', { token: admin.token, body: { name: `Sex ${sex}`, species: 'Cat', sex } });
+      assert.equal(res.status, 201, sex);
+      assert.equal(res.body.sex, sex);
+    }
+  });
+
+  test('sex left out or blank is saved as "Unknown"', async () => {
+    for (const body of [{ name: 'No Sex', species: 'Dog' }, { name: 'Blank Sex', species: 'Dog', sex: '' }]) {
+      const res = await t.api('POST', '/api/pets', { token: admin.token, body });
+      assert.equal(res.status, 201, body.name);
+      assert.equal(res.body.sex, 'Unknown');
+    }
+  });
+
+  test('400 under sex for any other value, and nothing is saved', async () => {
+    const before = t.db.prepare('SELECT COUNT(*) AS n FROM pets').get().n;
+    for (const sex of ['female', 'M', 'Other']) {
+      const res = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Bad Sex', species: 'Dog', sex } });
+      assert.equal(res.status, 400, sex);
+      assert.deepEqual(res.body.fields, { sex: 'Must be one of: Male, Female, Unknown.' });
+    }
+    const number = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Bad Sex', species: 'Dog', sex: 1 } });
+    assert.equal(number.status, 400);
+    assert.deepEqual(number.body.fields, { sex: 'Must be text.' });
+    assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM pets').get().n, before);
+  });
+
+  test('spaces around sex are trimmed, like other text fields', async () => {
+    const res = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Trim', species: 'Dog', sex: ' Female ' } });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.sex, 'Female');
+  });
 });
 
 describe('admin role is checked on every request', () => {

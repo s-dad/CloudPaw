@@ -38,11 +38,11 @@ cd backend
 npm install
 ```
 
-### Seed the database (run once)
+### Seed the database
 ```bash
 node seed.js
 ```
-This creates `backend/cloudpaw.db` and loads the sample pets from `data/pets.json`. Run it only once: running it again adds duplicate pets.
+This creates `backend/cloudpaw.db` and loads the sample pets from `data/pets.json`. It's safe to run again: pets that are already there aren't added twice, and any missing age, sex or location is filled in from the file without changing values that are already set. Run it after pulling changes to `data/pets.json` to update an existing database.
 
 ### Create an admin account
 ```bash
