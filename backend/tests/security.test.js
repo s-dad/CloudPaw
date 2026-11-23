@@ -11,7 +11,10 @@ after(() => t.stop());
 describe('only the public frontend is served', () => {
   // Sanity check, so the 404s below mean "blocked", not "server serves nothing".
   test('public pages and assets load', async () => {
-    for (const p of ['/', '/index.html', '/pets.html', '/admin-add.html', '/css/style.css', '/js/script.js', '/data/pets.json']) {
+    for (const p of [
+      '/', '/index.html', '/pets.html', '/admin-add.html', '/css/style.css', '/js/script.js', '/data/pets.json',
+      '/images/logo.svg', '/images/favicon.svg', '/images/placeholder.svg',
+    ]) {
       assert.equal(await t.rawGet(p), 200, p);
     }
   });
