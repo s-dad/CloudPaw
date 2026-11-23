@@ -123,6 +123,7 @@ api.get('/pets/:id', (req, res) => {
 
 // Matches the options in admin-add.html.
 const SPECIES_OPTIONS = ['Dog', 'Cat', 'Other'];
+const SEX_OPTIONS = ['Male', 'Female', 'Unknown'];
 const AGE_MAX = 100;
 
 // Checks the fields for a new pet. Returns { values, errors } like validateInquiry.
@@ -158,9 +159,16 @@ function validatePet(body) {
   values.breed = text('breed', { required: false, max: 100 });
   values.location = text('location', { required: false, max: 100 });
   values.description = text('description', { required: false, max: 2000 });
+  // Optional, so requests that don't send it still work; saved as "Unknown".
+  values.sex = text('sex', { required: false, max: 20 });
 
   if (values.species && !SPECIES_OPTIONS.includes(values.species)) {
     errors.species = `Must be one of: ${SPECIES_OPTIONS.join(', ')}.`;
+  }
+  if (values.sex === null && !errors.sex) {
+    values.sex = 'Unknown';
+  } else if (values.sex && !SEX_OPTIONS.includes(values.sex)) {
+    errors.sex = `Must be one of: ${SEX_OPTIONS.join(', ')}.`;
   }
 
   // Optional. Accept 3 or "3" (HTML forms send strings), but not 2.5, -1 or "abc".
@@ -190,12 +198,13 @@ api.post('/pets', auth.requireAdmin, (req, res) => {
   }
 
   try {
-    const result = db.prepare(`INSERT INTO pets (name, species, breed, age, location, description)
-      VALUES (?, ?, ?, ?, ?, ?)`).run(
+    const result = db.prepare(`INSERT INTO pets (name, species, breed, age, sex, location, description)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
       values.name,
       values.species,
       values.breed,
       values.age,
+      values.sex,
       values.location,
       values.description
     );

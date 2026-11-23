@@ -39,7 +39,7 @@ async function startTestServer() {
     throw new Error(`Refusing to run tests: database is ${db.name}, expected ${dbPath}`);
   }
 
-  // seed.js runs when loaded; hide its "Seeded 6 pets" line from test output.
+  // seed.js runs when loaded; hide its summary line from test output.
   const log = console.log;
   console.log = () => {};
   try {

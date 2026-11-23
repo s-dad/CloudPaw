@@ -17,7 +17,7 @@ describe('GET /api/pets', () => {
     assert.deepEqual(names(res.body), ['Bella', 'Charlie', 'Luna', 'Milo', 'Oliver', 'Sadie']);
     assert.deepEqual(
       Object.keys(res.body[0]).sort(),
-      ['age', 'breed', 'description', 'id', 'location', 'name', 'photo_url', 'species', 'status'],
+      ['age', 'breed', 'description', 'id', 'location', 'name', 'photo_url', 'sex', 'species', 'status'],
     );
     assert.equal(res.body[0].status, 'available');
   });
