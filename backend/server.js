@@ -49,7 +49,18 @@ function readOrigins(raw) {
   });
 }
 
+// LOG_REQUESTS: one JSON log line per /api request. On unless set to false
+// (the tests turn it off to keep their output quiet).
+function readOnOff(name, raw, fallback) {
+  if (raw === undefined || raw === '') return fallback;
+  const value = raw.trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(value)) return true;
+  if (['false', '0', 'no', 'off'].includes(value)) return false;
+  throw new Error(`${name} must be true or false (got "${raw}").`);
+}
+
 const config = {
+  logRequests: readOnOff('LOG_REQUESTS', process.env.LOG_REQUESTS, true),
   port: readPort(process.env.PORT),
   // HOST: which network address to listen on. Unset: every interface, IPv4 and
   // IPv6 (Node's default when no host is given), as before. 127.0.0.1 = this
@@ -61,12 +72,49 @@ const config = {
   allowedOrigins: readOrigins(process.env.ALLOWED_ORIGIN),
 };
 
+/* ---------- Logging ---------- */
+// One JSON object per line, so CloudWatch can search by field (level, path,
+// status...). Only the method, the path without its query string, the status
+// and timing are logged: never headers (they carry sign-in tokens), request
+// bodies (passwords, applicants' details) or query strings.
+const pathOf = (req) => req.originalUrl.split('?')[0];
+
+function writeLog(entry) {
+  const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
+  if (entry.level === 'info') console.log(line);
+  else console.error(line);
+}
+
+// An unexpected error, with its stack, for the server log only.
+function logError(req, message, err) {
+  writeLog({
+    level: 'error', message, method: req.method, path: pathOf(req),
+    error: err?.message, stack: err?.stack,
+  });
+}
+
 if (config.nodeEnv === 'production' && !config.allowedOrigins) {
-  console.warn('Warning: NODE_ENV is production but ALLOWED_ORIGIN is not set, so any website can call this API from a browser.');
+  writeLog({ level: 'warn', message: 'NODE_ENV is production but ALLOWED_ORIGIN is not set, so any website can call this API from a browser.' });
 }
 
 const app = express();
 app.locals.config = config; // for tests
+
+// Request log: one line per /api request when it finishes. First in the chain,
+// so requests rejected early (bad JSON, rate limits, CORS preflights) are
+// logged too and the time covers everything.
+if (config.logRequests) {
+  app.use((req, res, next) => {
+    const path = pathOf(req);
+    if (path !== '/api' && !path.startsWith('/api/')) return next();
+    const start = process.hrtime.bigint();
+    res.on('finish', () => {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      writeLog({ level: 'info', method: req.method, path, status: res.statusCode, ms: Math.round(ms * 10) / 10 });
+    });
+    next();
+  });
+}
 
 // Security headers on every response (helmet's defaults), plus a
 // Content-Security-Policy that only lets the browser load what the site uses.
@@ -112,6 +160,20 @@ app.use(express.json());
 // All JSON API routes live under /api (e.g. /api/pets), so they can never
 // collide with the frontend's page and asset paths.
 const api = express.Router();
+
+// Deployment check: 200 {"status":"ok"} when the database answers a simple
+// query, otherwise a JSON 503 (the real error goes to the log only). Before
+// the rate limits and never cached, so monitoring can call it freely.
+api.get('/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    db.prepare('SELECT 1 AS ok').get();
+    res.json({ status: 'ok' });
+  } catch (err) {
+    logError(req, 'Health check failed', err);
+    res.status(503).json({ status: 'error', error: 'Database unavailable' });
+  }
+});
 
 /* ---------- Rate limits ---------- */
 // Slows down password guessing and form spam: each client IP address gets a
@@ -315,7 +377,7 @@ api.post('/pets', auth.requireAdmin, (req, res) => {
     const pet = db.prepare('SELECT * FROM pets WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(pet);
   } catch (err) {
-    console.error('Failed to save pet:', err);
+    logError(req, 'Failed to save pet', err);
     res.status(500).json({ error: 'Could not save the pet. Please try again later.' });
   }
 });
@@ -345,7 +407,7 @@ api.patch('/pets/:id', auth.requireAdmin, (req, res) => {
     if (!result || result.changes === 0) return res.status(404).json({ error: 'Pet not found' });
     res.json(db.prepare('SELECT * FROM pets WHERE id = ?').get(id));
   } catch (err) {
-    console.error('Failed to update pet photo:', err);
+    logError(req, 'Failed to update pet photo', err);
     res.status(500).json({ error: 'Could not update the photo. Please try again later.' });
   }
 });
@@ -462,7 +524,7 @@ api.post('/inquiries', (req, res) => {
     );
     res.status(201).json({ id: Number(result.lastInsertRowid), message: 'Application received!' });
   } catch (err) {
-    console.error('Failed to save inquiry:', err);
+    logError(req, 'Failed to save inquiry', err);
     res.status(500).json({ error: 'Could not save your application. Please try again later.' });
   }
 });
@@ -485,7 +547,7 @@ api.get('/inquiries', auth.requireAdmin, (req, res) => {
     const rows = db.prepare(`${INQUIRY_SELECT} ORDER BY i.created_at DESC, i.id DESC`).all();
     res.json(rows);
   } catch (err) {
-    console.error('Failed to load inquiries:', err);
+    logError(req, 'Failed to load inquiries', err);
     res.status(500).json({ error: 'Could not load applications.' });
   }
 });
@@ -547,7 +609,7 @@ api.patch('/inquiries/:id', auth.requireAdmin, (req, res) => {
     const result = decide();
     res.status(result.status).json(result.body);
   } catch (err) {
-    console.error('Failed to update inquiry:', err);
+    logError(req, 'Failed to update inquiry', err);
     res.status(500).json({ error: 'Could not update the application. Please try again later.' });
   }
 });
@@ -606,7 +668,7 @@ api.post('/messages', (req, res) => {
       .run(values.name, values.email, values.message);
     res.status(201).json({ id: Number(result.lastInsertRowid), message: 'Message sent!' });
   } catch (err) {
-    console.error('Failed to save message:', err);
+    logError(req, 'Failed to save message', err);
     res.status(500).json({ error: 'Could not send your message. Please try again later.' });
   }
 });
@@ -658,14 +720,19 @@ app.use((err, req, res, next) => {
   // Keep their 4xx status so the client's mistake isn't reported as a server error.
   const status = err.status || err.statusCode;
   if (err.expose && status >= 400 && status < 500) {
-    console.error(`${req.method} ${req.originalUrl}: ${status} ${err.type || err.message}`);
+    // Only the error's type: a JSON parser's message can quote part of the
+    // body, which could be a password.
+    writeLog({
+      level: 'warn', message: 'Request body could not be read', method: req.method,
+      path: pathOf(req), status, type: err.type || 'unknown',
+    });
     return res.status(status).json({
       error: BODY_ERROR_MESSAGES[err.type] || 'The request could not be read.',
     });
   }
 
   // Anything else is unexpected: log the details here, send none to the client.
-  console.error(`${req.method} ${req.originalUrl}: unexpected error`, err);
+  logError(req, 'Unexpected error', err);
   res.status(500).json({ error: 'Something went wrong. Please try again later.' });
 });
 

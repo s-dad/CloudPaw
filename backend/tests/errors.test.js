@@ -75,10 +75,15 @@ describe('unexpected errors', () => {
       assert.deepEqual(res.body, { error: 'Something went wrong. Please try again later.' });
       assert.doesNotMatch(res.text, LEAK);
 
-      // The details go to the server log instead.
+      // The details go to the server log instead, as one JSON line.
       assert.equal(log.mock.callCount(), 1);
-      const logged = log.mock.calls[0].arguments;
-      assert.ok(logged.some((a) => a instanceof Error && a.message.startsWith('SIMULATED')), 'logs the real error');
+      const entry = JSON.parse(log.mock.calls[0].arguments[0]);
+      assert.equal(entry.level, 'error');
+      assert.equal(entry.message, 'Unexpected error');
+      assert.match(entry.error, /^SIMULATED/, 'logs the real error');
+      assert.match(entry.stack, /SIMULATED[\s\S]*at /, 'with its stack');
+      assert.equal(entry.method, name.split(' ')[0]);
+      assert.equal(entry.path, name.split(' ')[1].replace(':id', '1'));
     });
   }
 
