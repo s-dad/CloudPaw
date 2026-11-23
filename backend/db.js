@@ -10,10 +10,8 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'cloudpaw.db');
 const db = new Database(DB_PATH);
 db.exec(fs.readFileSync(__dirname + '/schema.sql', 'utf8'));
 
-// The old "applications" table was never used: adoption applications are saved
-// in "inquiries" instead. It was removed from schema.sql, but databases created
-// before that still have it, so drop it here. Nothing reads or writes it, and
-// IF EXISTS makes this a no-op once it's gone.
+// Older databases still have an unused "applications" table (applications are
+// stored in "inquiries"), so drop it. IF EXISTS makes this a no-op once it's gone.
 db.exec('DROP TABLE IF EXISTS applications');
 
 // CREATE TABLE IF NOT EXISTS never changes a table that already exists, so

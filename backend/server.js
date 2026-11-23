@@ -25,8 +25,8 @@ function readPort(raw) {
 
 // ALLOWED_ORIGIN: comma-separated list of sites allowed to call the API from a
 // browser, e.g. "http://localhost:3000,https://d1234.cloudfront.net".
-// Unset: any site may (Access-Control-Allow-Origin: *), as before. On AWS, set
-// it to the CloudFront address so only the real site can call the API.
+// Unset: any site may (Access-Control-Allow-Origin: *). On AWS, set it to the
+// CloudFront address so only the real site can call the API.
 function readOrigins(raw) {
   if (raw === undefined || raw.trim() === '') return null;
   const entries = raw.split(',').map((entry) => entry.trim()).filter(Boolean);
@@ -63,8 +63,8 @@ const config = {
   logRequests: readOnOff('LOG_REQUESTS', process.env.LOG_REQUESTS, true),
   port: readPort(process.env.PORT),
   // HOST: which network address to listen on. Unset: every interface, IPv4 and
-  // IPv6 (Node's default when no host is given), as before. 127.0.0.1 = this
-  // computer only. Not used on Lambda.
+  // IPv6 (Node's default when no host is given). 127.0.0.1 = this computer
+  // only. Not used on Lambda.
   host: process.env.HOST || undefined,
   // NODE_ENV: "production" makes Express and its libraries use their
   // production settings. API errors never include details either way.
@@ -119,8 +119,9 @@ if (config.logRequests) {
 // Security headers on every response (helmet's defaults), plus a
 // Content-Security-Policy that only lets the browser load what the site uses.
 // Helmet's default policy is kept except for these changes:
-//   script-src  'self' (default): only js/script.js from this server. No inline
-//               <script> or onclick="..." anywhere (script-src-attr 'none').
+//   script-src  'self' (default): only script files from this server
+//               (js/config.js, js/script.js). No inline <script> or
+//               onclick="..." anywhere (script-src-attr 'none').
 //   style-src   our CSS and the Google Fonts stylesheet only. No inline
 //               styles: no <style> blocks or style="..." attributes, in the
 //               pages or in HTML built by script.js (keep it that way; put new
@@ -188,7 +189,7 @@ api.get('/health', (req, res) => {
 // count; there, API Gateway throttling will do this job instead.
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 
-// A positive whole number from the environment, or the default.
+// A positive whole number from the environment; anything else uses the default.
 function limitFromEnv(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isInteger(value) && value > 0 ? value : fallback;
@@ -261,7 +262,6 @@ const SPECIES_OPTIONS = ['Dog', 'Cat', 'Other'];
 const SEX_OPTIONS = ['Male', 'Female', 'Unknown'];
 const AGE_MAX = 100;
 
-// Checks the fields for a new pet. Returns { values, errors } like validateInquiry.
 // Image links (photo_url): https only, so a pasted link can't be http:// (mixed
 // content) or something like javascript:. The server only stores the link and
 // never fetches it, so it can't be used to make the server request other sites.
@@ -289,7 +289,9 @@ function readPhotoUrl(raw) {
   return { value };
 }
 
-// Only these fields are read; anything else in the body (id, status) is ignored.
+// Checks the fields for a new pet and returns { values, errors }, like
+// validateInquiry. Only these fields are read; anything else in the body
+// (id, status) is ignored.
 function validatePet(body) {
   const errors = {};
   const values = {};
@@ -401,7 +403,7 @@ api.patch('/pets/:id', auth.requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: { photo_url: photo.error } });
   }
 
-  // Same rule as GET /pets/:id: anything that isn't a positive whole number can't match.
+  // Only a positive whole number can be a pet's id; anything else gets the 404 below.
   const id = /^[1-9]\d*$/.test(req.params.id) ? Number(req.params.id) : null;
   try {
     const result = id && db.prepare('UPDATE pets SET photo_url = ? WHERE id = ?').run(photo.value, id);
@@ -573,7 +575,7 @@ api.patch('/inquiries/:id', auth.requireAdmin, (req, res) => {
     });
   }
 
-  // Same rule as GET /pets/:id: anything that isn't a positive whole number can't match.
+  // Only a positive whole number can be an application's id; anything else gets the 404 below.
   const id = /^[1-9]\d*$/.test(req.params.id) ? Number(req.params.id) : null;
 
   // All checks and updates run in one transaction, so two decisions made at
@@ -758,6 +760,6 @@ if (require.main === module) {
     const shown = !host || host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
     console.log(`CloudPaw on http://${shown}:${server.address().port} (API at /api)`);
   };
-  // No host given = every interface, IPv4 and IPv6, as before.
+  // No host given = every interface, IPv4 and IPv6.
   const server = host ? app.listen(port, host, onListening) : app.listen(port, onListening);
 }

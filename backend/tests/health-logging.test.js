@@ -4,7 +4,7 @@
 // its own process, so the other test files stay quiet. Log lines are captured
 // by replacing console.log / console.error for the duration of each test.
 process.env.LOG_REQUESTS = 'true';
-process.env.RATE_LIMIT_LOGIN = '3';
+process.env.RATE_LIMIT_LOGIN = '3'; // low, so the logging test can reach a 429 quickly
 
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');

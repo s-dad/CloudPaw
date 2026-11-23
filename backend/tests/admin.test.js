@@ -1,4 +1,5 @@
-// Admin-only routes: GET /api/inquiries and POST /api/pets.
+// Admin-only routes: GET /api/inquiries, POST /api/pets (including sex and
+// photo_url validation) and PATCH /api/pets/:id.
 const { describe, test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { startTestServer } = require('./helpers');

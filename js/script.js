@@ -3,8 +3,9 @@
    The API's address comes from js/config.js (loaded first), so it can differ
    between local and AWS without editing this file.
 
-   Each page sets <body data-page="..."> and the matching init function below
-   runs: home, pets, pet, adopt, about.
+   Each page sets <body data-page="...">, and the function with that name in
+   `pages` below runs (pages without one, like 404.html, get the shared parts
+   only: nav, sign-in state and the chat widget).
    ============================================================================= */
 
 // "/api" if js/config.js is missing or its value isn't usable text. A trailing
@@ -388,9 +389,9 @@ const applicationRowHtml = (app) => {
   const status = String(app.status || "pending").toLowerCase();
   const label = status.charAt(0).toUpperCase() + status.slice(1);
   const badge = STATUS_BADGES.includes(status) ? `badge--${status}` : "";
-  // Approve/Deny call PATCH /api/inquiries/:id (see the admin-applications page
-  // below; no inline onclick, so the Content-Security-Policy can block inline
-  // scripts). Decisions are final, so the buttons are disabled once decided.
+  // Clicks are handled by wireApplicationDecisions below (no inline onclick, so
+  // the Content-Security-Policy can block inline scripts). Decisions are final,
+  // so the buttons are disabled once decided.
   const disabled = status === "pending" ? "" : " disabled";
   const who = escapeHtml(app.name);
   const actions = `
@@ -871,7 +872,6 @@ const CHAT_STORAGE_KEY = "cloudpaw.chat";
 const CHAT_GREETING = "Hi! Ask me about adopting a pet.";
 const CHAT_MAX_SAVED = 50; // messages kept between pages
 
-// The assistant's answer to one message.
 function chatReply(text) {
   const t = text.toLowerCase();
   if (t.includes("luna")) {
