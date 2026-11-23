@@ -305,7 +305,7 @@ const petCardHtml = (pet) => `
   <article class="pet-card">
     <img
       class="pet-card__image"
-      src="${escapeHtml(pet.photo_url || 'images/pets/' + pet.name.toLowerCase() + '.jpg')}"
+      src="${escapeHtml(pet.photo_url || PLACEHOLDER_IMAGE)}"
       alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
       loading="lazy"
     />
@@ -349,7 +349,7 @@ const petDetailHtml = (pet) => `
     <div class="pet-detail__media">
       <img
         class="pet-detail__image"
-        src="${escapeHtml(pet.photo_url ? pet.photo_url : 'images/pets/' + pet.name.toLowerCase() + '.jpg')}"
+        src="${escapeHtml(pet.photo_url || PLACEHOLDER_IMAGE)}"
         alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
       />
       ${isAdmin() ? photoEditHtml(pet) : ""}
@@ -358,7 +358,7 @@ const petDetailHtml = (pet) => `
       <p class="eyebrow">${escapeHtml(pet.species)} · ${escapeHtml(pet.breed || "Mixed")}</p>
       <h1>${escapeHtml(pet.name)}</h1>
       <dl class="facts">
-        <div><dt>Age</dt><dd>${escapeHtml(formatAge(pet.age))}</dd></div>
+        <div><dt>Age</dt><dd>${escapeHtml(typeof pet.age === "number" ? formatAge(pet.age) : "Unknown")}</dd></div>
         <div><dt>Sex</dt><dd>${escapeHtml(pet.sex || "Unknown")}</dd></div>
         <div><dt>Breed</dt><dd>${escapeHtml(pet.breed || "Mixed")}</dd></div>
         <div><dt>Location</dt><dd>${escapeHtml(pet.location || "Unknown")}</dd></div>
