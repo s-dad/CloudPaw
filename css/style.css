@@ -824,6 +824,20 @@ textarea[aria-invalid="true"] {
 }
 .btn-small--approve { background: #16a34a; }
 .btn-small--deny { background: #dc2626; }
+/* Decided applications (and while a decision is being saved). */
+.btn-small:disabled {
+  background: var(--color-muted);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* pet.html: shown instead of the Apply button when a pet has been adopted. */
+.pet-detail__adopted {
+  margin-bottom: var(--space-3);
+}
+.pet-detail__adopted .badge {
+  margin-right: var(--space-2);
+}
 
 /* ==========================================================================
    Responsive

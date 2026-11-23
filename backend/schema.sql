@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS pets (
   description TEXT,
   photo_url TEXT,
   status TEXT DEFAULT 'available',
-  location TEXT
+  location TEXT,
+  sex TEXT
 );
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

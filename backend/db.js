@@ -26,5 +26,6 @@ function addColumnIfMissing(table, column, definition) {
 }
 
 addColumnIfMissing('pets', 'location', 'TEXT');
+addColumnIfMissing('pets', 'sex', 'TEXT'); // Male, Female or Unknown; empty = not recorded yet
 
 module.exports = db;
