@@ -402,11 +402,11 @@ const applicationRowHtml = (app) => {
             aria-label="Deny ${who}'s application"${disabled}>Deny</button>`;
   return `
     <tr data-application-id="${escapeHtml(String(app.id))}">
-      <td>${escapeHtml(app.name)}</td>
-      <td class="data-table__strong">${escapeHtml(app.pet_name || `Pet #${app.pet_id}`)}</td>
-      <td class="muted">${escapeHtml(app.email)}</td>
-      <td><span class="badge ${badge}">${escapeHtml(label)}</span></td>
-      <td class="data-table__actions">${actions}</td>
+      <td data-label="Applicant">${escapeHtml(app.name)}</td>
+      <td data-label="Pet" class="data-table__strong">${escapeHtml(app.pet_name || `Pet #${app.pet_id}`)}</td>
+      <td data-label="Email" class="muted">${escapeHtml(app.email)}</td>
+      <td data-label="Status"><span class="badge ${badge}">${escapeHtml(label)}</span></td>
+      <td data-label="Action" class="data-table__actions">${actions}</td>
     </tr>`;
 };
 
