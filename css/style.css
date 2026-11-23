@@ -171,11 +171,12 @@ a:hover {
   color: var(--color-text);
 }
 
+/* images/logo.svg (cloud with a paw, 132:78). Width follows the height so it
+   is never cropped or squeezed. */
 .logo img {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  object-fit: cover;
+  height: 36px;
+  width: auto;
+  flex: none;
 }
 
 .nav-links {
@@ -199,9 +200,9 @@ a:hover {
   gap: var(--space-2);
 }
 
-/* Tablet / small laptop: when links + "Hi, Name · Sign out" + Apply to Adopt
-   don't fit on one line (e.g. an admin at ~800px), the buttons move to a
-   second row on the right instead of running off the screen. */
+/* Wider than phones. If the nav still doesn't fit on one line (e.g. very large
+   text settings), the buttons move to a second row on the right instead of
+   running off the screen. */
 @media (min-width: 769px) {
   .nav {
     flex-wrap: wrap;
@@ -213,6 +214,32 @@ a:hover {
   }
   .nav-links {
     margin-left: 0;
+  }
+}
+
+/* Admin signed in, 769–1199px: the six links plus "Hi, Name · Sign out" and
+   Apply to Adopt need about 1,120px. Fold the links into the ☰ menu (the same
+   toggle phones use) and keep logo, sign-in area, Apply and ☰ on one row.
+   The admin links are only visible to admins, so :has() detects the case. */
+@media (min-width: 769px) and (max-width: 1199px) {
+  .nav:has([data-admin-only]:not([hidden])) .nav-actions {
+    order: 2;
+  }
+  .nav:has([data-admin-only]:not([hidden])) .nav-toggle {
+    display: flex;
+    order: 3;
+  }
+  .nav:has([data-admin-only]:not([hidden])) .nav-links {
+    display: none;
+    order: 4;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    padding: var(--space-3) 0 var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+  .nav:has([data-admin-only]:not([hidden])) .nav-links.is-open {
+    display: flex;
   }
 }
 
@@ -331,6 +358,17 @@ a:hover {
   gap: var(--space-4);
 }
 
+/* Home page: always exactly 3 featured pets. One column on phones, three from
+   700px up, so the cards never leave one pet alone on a second row. */
+.pet-grid--featured {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 700px) {
+  .pet-grid--featured {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .pet-card {
   background: #fff;
   border: 1px solid var(--color-border);
@@ -419,12 +457,14 @@ textarea[aria-invalid="true"] {
 .site-footer {
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
-  padding: var(--space-6) var(--space-4) var(--space-4);
+  /* Extra space at the bottom so the floating "Ask AI" button never covers
+     the copyright line. */
+  padding: var(--space-6) var(--space-4) calc(var(--space-4) + 4.5rem);
   margin-top: var(--space-6);
 }
 
 .footer-inner {
-  max-width: var(--max-width);
+  max-width: calc(var(--max-width) - 2 * var(--space-4)); /* see .page-header__inner */
   margin: 0 auto;
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;
@@ -444,7 +484,7 @@ textarea[aria-invalid="true"] {
 }
 
 .copyright {
-  max-width: var(--max-width);
+  max-width: calc(var(--max-width) - 2 * var(--space-4)); /* see .page-header__inner */
   margin: var(--space-5) auto 0;
   padding-top: var(--space-3);
   border-top: 1px solid var(--color-border);
@@ -468,8 +508,11 @@ textarea[aria-invalid="true"] {
   padding: var(--space-5) var(--space-4);
 }
 
+/* The header band and footer put their side padding outside this box, while
+   .nav and the page sections put it inside --max-width. Subtract it here so
+   text lines up with the nav and the content on wide screens. */
 .page-header__inner {
-  max-width: var(--max-width);
+  max-width: calc(var(--max-width) - 2 * var(--space-4));
   margin: 0 auto;
 }
 
@@ -529,6 +572,43 @@ textarea[aria-invalid="true"] {
   background: var(--color-surface);
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
+}
+
+/* Photo column: the photo, plus "Admin: change photo" below it for admins. */
+.pet-detail__media {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.photo-edit {
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+.photo-edit__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.photo-edit__row input {
+  flex: 1 1 14rem;
+}
+.photo-edit__row .field-error {
+  flex-basis: 100%;
+  order: 3;
+}
+/* Its status line: left-aligned and no empty space when there's no message
+   (still in the page, so screen readers announce new messages). */
+.photo-edit .status {
+  margin-top: var(--space-2);
+  min-height: 0;
+  text-align: left;
+}
+.photo-edit .status:empty {
+  margin: 0;
 }
 
 .pet-detail__body {
@@ -723,6 +803,7 @@ textarea[aria-invalid="true"] {
 }
 
 .team-grid {
+  margin-top: var(--space-3);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-4);
@@ -795,6 +876,56 @@ textarea[aria-invalid="true"] {
   white-space: nowrap;
 }
 
+/* Phones: each application becomes a small card instead of a table row, so
+   nothing scrolls sideways. Each cell shows its column name (data-label, set
+   in script.js) on the left; Approve / Deny sit side by side at the bottom. */
+@media (max-width: 600px) {
+  .data-table {
+    min-width: 0;
+  }
+  .data-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .data-table tbody,
+  .data-table tr,
+  .data-table td {
+    display: block;
+  }
+  .data-table tbody tr {
+    padding: var(--space-3) 0;
+  }
+  .data-table td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1) 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .data-table td::before {
+    content: attr(data-label);
+    flex: none;
+    font-family: var(--font-heading);
+    color: var(--color-text);
+    text-align: left;
+  }
+  .data-table td.data-table__actions {
+    padding-top: var(--space-2);
+  }
+  .data-table td.data-table__actions::before {
+    content: none;
+  }
+  .data-table__actions .btn-small {
+    flex: 1;
+    padding: 8px 10px;
+  }
+}
+
 /* Status pill: Pending / Approved / Denied. */
 .badge {
   display: inline-block;
@@ -837,6 +968,141 @@ textarea[aria-invalid="true"] {
 }
 .pet-detail__adopted .badge {
   margin-right: var(--space-2);
+}
+
+/* ==========================================================================
+   Chat widget ("Ask AI" on every page, built by script.js)
+   Above the sticky header (100), below the skip link (1000).
+   ========================================================================== */
+.chat-launcher {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.75rem 1.25rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: #fff;
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+  cursor: pointer;
+  transition: background var(--transition), transform var(--transition);
+}
+.chat-launcher:hover {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+.chat-launcher:focus-visible,
+.chat-panel__close:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.chat-panel {
+  position: fixed;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + 4rem);
+  z-index: 500;
+  display: flex;
+  flex-direction: column;
+  width: min(360px, calc(100vw - 2 * var(--space-4)));
+  height: min(520px, calc(100vh - 8rem));
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.chat-panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-primary);
+  color: #fff;
+}
+.chat-panel__title {
+  flex: 1;
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+.chat-panel__close {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.chat-panel__close:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.chat-panel__messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface);
+}
+.message {
+  max-width: 85%;
+  padding: 0.6rem 0.85rem;
+  border-radius: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.message--bot {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-bottom-left-radius: 4px;
+}
+.message--user {
+  align-self: flex-end;
+  background: var(--color-primary);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+
+.chat-panel__form {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+.chat-panel__form input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+/* Phones: the chat box takes up most of the screen, above the button. */
+@media (max-width: 600px) {
+  .chat-panel {
+    top: var(--space-3);
+    left: var(--space-3);
+    right: var(--space-3);
+    bottom: calc(var(--space-4) + 4rem);
+    width: auto;
+    height: auto;
+  }
 }
 
 /* ==========================================================================

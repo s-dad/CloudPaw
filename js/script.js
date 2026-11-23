@@ -11,8 +11,6 @@
 
 const CONFIG = {
   API_BASE: "/api",
-  USE_LOCAL_DATA: false,
-  LOCAL_DATA_URL: "./data/pets.json",
 };
 
 const PLACEHOLDER_IMAGE = "images/placeholder.svg";
@@ -41,15 +39,6 @@ const formatAge = (age) => {
 
 const getParam = (name) => new URLSearchParams(window.location.search).get(name) || "";
 
-function filterPets(pets, query = "") {
-  const q = query.toLowerCase();
-  if (!q) return pets;
-  return pets.filter((pet) =>
-    [pet.name, pet.breed, pet.species, pet.location]
-      .some((field) => String(field || "").toLowerCase().includes(q))
-  );
-}
-
 /* ---------- Data layer ---------- */
 async function getJson(url) {
   const res = await fetch(url);
@@ -57,13 +46,9 @@ async function getJson(url) {
   return res.json();
 }
 
-// Pets matching the search text and species (both optional). The API filters
-// with ?q= and ?species=; local JSON has to be filtered here.
+// Pets matching the search text and species (both optional), filtered by the
+// API with ?q= and ?species=.
 async function fetchPets(query = "", species = "") {
-  if (CONFIG.USE_LOCAL_DATA) {
-    const pets = filterPets(await getJson(CONFIG.LOCAL_DATA_URL), query);
-    return species ? pets.filter((pet) => pet.species === species) : pets;
-  }
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   if (species) params.set("species", species);
@@ -72,10 +57,6 @@ async function fetchPets(query = "", species = "") {
 }
 
 async function fetchPet(id) {
-  if (CONFIG.USE_LOCAL_DATA) {
-    const pets = await getJson(CONFIG.LOCAL_DATA_URL);
-    return pets.find((pet) => String(pet.id) === String(id)) || null;
-  }
   const res = await fetch(`${CONFIG.API_BASE}/pets/${encodeURIComponent(id)}`);
   // 404 means "no such pet": return null so the page shows "couldn't find that pet".
   // Any other failure throws, so the page shows "couldn't load this pet right now".
@@ -84,16 +65,11 @@ async function fetchPet(id) {
   return res.json();
 }
 
-// Sends form data to the API. In local mode the data is only logged to the
-// console; nothing is stored or emailed.
+// Sends form data to the API.
 // On an error response it throws an Error that also carries the API's reply:
 // err.status, err.apiMessage (the API's "error" text) and err.fields
 // ({ field: message } for each invalid field, empty if none).
 async function submitForm(path, data) {
-  if (CONFIG.USE_LOCAL_DATA) {
-    console.info(`[local mode] POST ${path} was not sent:`, data);
-    return;
-  }
   const res = await fetch(`${CONFIG.API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -169,7 +145,7 @@ async function signOut() {
 // reached, keeps the saved user rather than signing anyone out.
 async function refreshAuth() {
   const auth = getAuth();
-  if (!auth || CONFIG.USE_LOCAL_DATA) return auth?.user || null;
+  if (!auth) return null;
   try {
     const res = await fetch(`${CONFIG.API_BASE}/auth/me`, { headers: authHeaders() });
     if (res.status === 401) {
@@ -290,10 +266,6 @@ function wireAuthForm({ form, statusEl, path, buildBody, beforeSubmit, onFailure
       form.reportValidity();
       return;
     }
-    if (CONFIG.USE_LOCAL_DATA) {
-      setStatus("Signing in needs the CloudPaw API, which isn't connected in local mode.", true);
-      return;
-    }
 
     const submitBtn = form.querySelector("[type=submit]");
     submitBtn.disabled = true;
@@ -333,7 +305,7 @@ const petCardHtml = (pet) => `
   <article class="pet-card">
     <img
       class="pet-card__image"
-      src="${escapeHtml(pet.photo_url || 'images/pets/' + pet.name.toLowerCase() + '.jpg')}"
+      src="${escapeHtml(pet.photo_url || PLACEHOLDER_IMAGE)}"
       alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
       loading="lazy"
     />
@@ -350,20 +322,43 @@ const petCardHtml = (pet) => `
     </div>
   </article>`;
 
+// Admins only: change the pet's photo link under the photo (PATCH /api/pets/:id).
+// Shows the current link, which for the sample pets is a file on this site.
+// novalidate: wirePhotoEdit runs the browser's checks itself, after the
+// "unchanged" check, since a site file path isn't a valid https:// link.
+const photoEditHtml = (pet) => `
+  <form id="photo-edit-form" class="photo-edit" novalidate aria-label="Change ${escapeHtml(pet.name)}'s photo">
+    <div class="field">
+      <label for="photo-edit-url">Admin: change photo</label>
+      <div class="photo-edit__row">
+        <input type="url" id="photo-edit-url" name="photo_url" maxlength="2000"
+               pattern="https://.*" title="A full link that starts with https://"
+               placeholder="https://…" value="${escapeHtml(pet.photo_url || "")}"
+               aria-describedby="photo-edit-hint" />
+        <button type="submit" class="btn btn-primary">Save photo</button>
+      </div>
+      <p id="photo-edit-hint" class="field-hint">Paste a link that starts with https://, or clear the box to show the default image.</p>
+    </div>
+    <p id="photo-edit-status" class="status" role="status" aria-live="polite"></p>
+  </form>`;
+
 // An adopted pet's page still loads (old links keep working), but shows that
 // the pet has been adopted instead of the Apply button.
 const petDetailHtml = (pet) => `
   <article class="pet-detail">
-    <img
-      class="pet-detail__image"
-      src="${escapeHtml(pet.photo_url ? pet.photo_url : 'images/pets/' + pet.name.toLowerCase() + '.jpg')}"
-      alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
-    />
+    <div class="pet-detail__media">
+      <img
+        class="pet-detail__image"
+        src="${escapeHtml(pet.photo_url || PLACEHOLDER_IMAGE)}"
+        alt="${escapeHtml(pet.name)} the ${escapeHtml(pet.species)}"
+      />
+      ${isAdmin() ? photoEditHtml(pet) : ""}
+    </div>
     <div class="pet-detail__body">
       <p class="eyebrow">${escapeHtml(pet.species)} · ${escapeHtml(pet.breed || "Mixed")}</p>
       <h1>${escapeHtml(pet.name)}</h1>
       <dl class="facts">
-        <div><dt>Age</dt><dd>${escapeHtml(formatAge(pet.age))}</dd></div>
+        <div><dt>Age</dt><dd>${escapeHtml(typeof pet.age === "number" ? formatAge(pet.age) : "Unknown")}</dd></div>
         <div><dt>Sex</dt><dd>${escapeHtml(pet.sex || "Unknown")}</dd></div>
         <div><dt>Breed</dt><dd>${escapeHtml(pet.breed || "Mixed")}</dd></div>
         <div><dt>Location</dt><dd>${escapeHtml(pet.location || "Unknown")}</dd></div>
@@ -402,11 +397,11 @@ const applicationRowHtml = (app) => {
             aria-label="Deny ${who}'s application"${disabled}>Deny</button>`;
   return `
     <tr data-application-id="${escapeHtml(String(app.id))}">
-      <td>${escapeHtml(app.name)}</td>
-      <td class="data-table__strong">${escapeHtml(app.pet_name || `Pet #${app.pet_id}`)}</td>
-      <td class="muted">${escapeHtml(app.email)}</td>
-      <td><span class="badge ${badge}">${escapeHtml(label)}</span></td>
-      <td class="data-table__actions">${actions}</td>
+      <td data-label="Applicant">${escapeHtml(app.name)}</td>
+      <td data-label="Pet" class="data-table__strong">${escapeHtml(app.pet_name || `Pet #${app.pet_id}`)}</td>
+      <td data-label="Email" class="muted">${escapeHtml(app.email)}</td>
+      <td data-label="Status"><span class="badge ${badge}">${escapeHtml(label)}</span></td>
+      <td data-label="Action" class="data-table__actions">${actions}</td>
     </tr>`;
 };
 
@@ -482,6 +477,70 @@ function wireApplicationDecisions(tbody, statusEl, apps) {
       console.error(err);
       setStatus("We couldn't reach the server. Please try again.", true);
       buttons.forEach((b) => { b.disabled = false; });
+    }
+  });
+}
+
+// "Admin: change photo" on pet.html. Sends PATCH /api/pets/:id with the admin's
+// token and swaps the photo without reloading. Saving an unchanged link sends
+// nothing (so the sample pets' site photos can't be wiped by accident), and
+// clearing the box asks first. A link that doesn't load shows the default image.
+function wirePhotoEdit(pet) {
+  const form = document.getElementById("photo-edit-form");
+  const input = form.elements.photo_url;
+  const button = form.querySelector("[type=submit]");
+  const statusEl = document.getElementById("photo-edit-status");
+  const image = document.querySelector(".pet-detail__image");
+  let current = pet.photo_url || "";
+  const setStatus = (message, isError = false) => {
+    statusEl.textContent = message;
+    statusEl.classList.toggle("status--error", isError);
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearFieldErrors(form);
+    setStatus("");
+    const value = input.value.trim();
+    if (value === current) {
+      setStatus("Nothing to save: the link hasn't changed.");
+      return;
+    }
+    if (!value && !window.confirm(`Remove ${pet.name}'s photo? The default image will show instead.`)) return;
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    button.disabled = true;
+    setStatus("Saving…");
+    try {
+      const res = await fetch(`${CONFIG.API_BASE}/pets/${encodeURIComponent(pet.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ photo_url: value }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        // Session expired or no longer an admin: sign in again.
+        if (res.status === 401) clearAuth();
+        goToSignIn();
+        return;
+      }
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        current = body.photo_url || "";
+        input.value = current;
+        image.src = current || PLACEHOLDER_IMAGE;
+        setStatus(current ? "Photo updated." : "Photo removed. The default image is showing.");
+        return;
+      }
+      if (body.fields?.photo_url) showFieldError(input, body.fields.photo_url);
+      setStatus(body.error || "Could not update the photo. Please try again.", true);
+    } catch (err) {
+      console.error(err);
+      setStatus("We couldn't reach the server. Please try again later.", true);
+    } finally {
+      button.disabled = false;
     }
   });
 }
@@ -607,6 +666,7 @@ const pages = {
       document.title = `${pet.name} | CloudPaw`;
       container.innerHTML = petDetailHtml(pet);
       statusEl.textContent = "";
+      if (document.getElementById("photo-edit-form")) wirePhotoEdit(pet);
     } catch (err) {
       console.error(err);
       container.innerHTML = "";
@@ -724,8 +784,8 @@ const pages = {
         return;
       }
 
-      // Named fields only: name, species, breed, age, location, description.
-      // (The photo input has no name yet; uploads aren't supported by the API.)
+      // Named fields: name, species, breed, age, sex, location, photo_url
+      // (the Image URL field) and description.
       const data = Object.fromEntries(new FormData(form));
       submitBtn.disabled = true;
       setStatus("Saving…");
@@ -796,48 +856,136 @@ const pages = {
     }
   },
 
-  // "Ask AI" demo chat. Answers are hard-coded for now.
-  // (Moved here from an inline <script> in chatbot.html so the
-  // Content-Security-Policy can block all inline scripts.)
-  chatbot() {
-    const chatForm = document.getElementById("chat-form");
-    const chatInput = document.getElementById("chat-input");
-    const chatMessages = document.getElementById("chat-messages");
-
-    chatForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      const userText = chatInput.value.trim();
-      if (!userText) return;
-
-      // 1. Add the user's message to the screen
-      const userMsg = document.createElement("div");
-      userMsg.className = "message user";
-      userMsg.textContent = userText;
-      chatMessages.appendChild(userMsg);
-
-      chatInput.value = "";
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-
-      // 2. Simulate the AI thinking (this is where Bedrock will go later)
-      setTimeout(() => {
-        const botMsg = document.createElement("div");
-        botMsg.className = "message bot";
-
-        // Fake AI logic for the demo
-        if (userText.toLowerCase().includes("luna")) {
-          botMsg.textContent = "Luna is a 2-year-old Labrador Retriever mix. She is very friendly, high-energy, and loves to play fetch!";
-        } else if (userText.toLowerCase().includes("cat")) {
-          botMsg.textContent = "We currently have Milo and Oliver available. Milo is a laid-back tabby, and Oliver is a gentle Maine Coon.";
-        } else {
-          botMsg.textContent = "That's a great question! Once I am connected to AWS Bedrock, I will search our database and documents to give you a detailed answer.";
-        }
-
-        chatMessages.appendChild(botMsg);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-      }, 1000); // 1 second delay to simulate AI processing
-    });
-  },
 };
+
+/* ---------- Chat widget ("Ask AI", every page) ---------- */
+// A floating "Ask AI" button in the bottom-right corner opens a small chat box
+// above it. The answers are written here (no AI service is connected).
+// The conversation and whether the box is open are kept in sessionStorage, so
+// they carry over between pages in the same tab and are cleared when the tab
+// closes. Nothing is sent to the server.
+const CHAT_STORAGE_KEY = "cloudpaw.chat";
+const CHAT_GREETING = "Hi! Ask me about adopting a pet.";
+const CHAT_MAX_SAVED = 50; // messages kept between pages
+
+// The assistant's answer to one message.
+function chatReply(text) {
+  const t = text.toLowerCase();
+  if (t.includes("luna")) {
+    return "Luna is a 2-year-old female Labrador Retriever in Columbus, OH. She is friendly, high-energy, and loves fetching tennis balls!";
+  }
+  if (t.includes("cat")) {
+    return "We currently have Milo and Oliver available. Milo is a laid-back 3-year-old tabby in Cleveland, OH, and Oliver is a gentle 4-year-old Maine Coon in Dayton, OH.";
+  }
+  return "I can tell you about Luna or our cats. To see every pet, try Find a Pet, or send us a message from the About page.";
+}
+
+function loadChat() {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(CHAT_STORAGE_KEY) || "null");
+    if (saved && Array.isArray(saved.messages) && saved.messages.length) return saved;
+  } catch {
+    // Storage blocked or unreadable: start a new conversation.
+  }
+  return { open: false, messages: [{ from: "bot", text: CHAT_GREETING }] };
+}
+
+function saveChat(state) {
+  try {
+    sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
+      open: state.open,
+      messages: state.messages.slice(-CHAT_MAX_SAVED),
+    }));
+  } catch {
+    // Storage blocked: the chat still works, it just won't carry over.
+  }
+}
+
+const PAW_SVG = `
+  <svg viewBox="0 0 64 64" width="22" height="22" aria-hidden="true" focusable="false">
+    <g fill="currentColor">
+      <ellipse cx="32" cy="40" rx="11" ry="9.5"/>
+      <ellipse cx="18.5" cy="27" rx="4.5" ry="5.8"/><ellipse cx="27" cy="20" rx="4.5" ry="5.8"/>
+      <ellipse cx="37" cy="20" rx="4.5" ry="5.8"/><ellipse cx="45.5" cy="27" rx="4.5" ry="5.8"/>
+    </g>
+  </svg>`;
+
+function initChatWidget() {
+  const widget = document.createElement("div");
+  widget.className = "chat-widget";
+  widget.innerHTML = `
+    <section id="chat-panel" class="chat-panel" role="dialog" aria-labelledby="chat-title" hidden>
+      <header class="chat-panel__header">
+        ${PAW_SVG}
+        <h2 id="chat-title" class="chat-panel__title">CloudPaw assistant</h2>
+        <button type="button" class="chat-panel__close" data-chat="close" aria-label="Close chat">×</button>
+      </header>
+      <div class="chat-panel__messages" role="log" aria-live="polite"></div>
+      <form class="chat-panel__form">
+        <label class="visually-hidden" for="chat-input">Your message</label>
+        <input id="chat-input" name="message" type="text" maxlength="500" autocomplete="off"
+               placeholder="Ask about adopting a pet…" />
+        <button type="submit" class="btn btn-primary">Send</button>
+      </form>
+    </section>
+    <button type="button" class="chat-launcher" aria-controls="chat-panel" aria-expanded="false">
+      ${PAW_SVG}<span>Ask AI</span>
+    </button>`;
+  document.body.append(widget);
+
+  const panel = widget.querySelector("#chat-panel");
+  const launcher = widget.querySelector(".chat-launcher");
+  const list = widget.querySelector(".chat-panel__messages");
+  const form = widget.querySelector(".chat-panel__form");
+  const input = form.elements.message;
+  const state = loadChat();
+
+  // Messages are added with textContent, so whatever someone types is shown
+  // as plain text.
+  const addBubble = ({ from, text }) => {
+    const bubble = document.createElement("p");
+    bubble.className = `message message--${from === "user" ? "user" : "bot"}`;
+    bubble.textContent = text;
+    list.append(bubble);
+    list.scrollTop = list.scrollHeight;
+  };
+  const addMessage = (message) => {
+    state.messages.push(message);
+    addBubble(message);
+    saveChat(state);
+  };
+
+  const setOpen = (open, { focus = true } = {}) => {
+    state.open = open;
+    panel.hidden = !open;
+    launcher.setAttribute("aria-expanded", String(open));
+    saveChat(state);
+    if (!focus) return;
+    if (open) input.focus();
+    else launcher.focus();
+  };
+
+  state.messages.forEach(addBubble);
+  // Reopen on the next page if it was open, without moving the focus there.
+  setOpen(state.open, { focus: false });
+  list.scrollTop = list.scrollHeight;
+
+  launcher.addEventListener("click", () => setOpen(panel.hidden));
+  widget.querySelector('[data-chat="close"]').addEventListener("click", () => setOpen(false));
+  panel.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setOpen(false);
+  });
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = "";
+    addMessage({ from: "user", text });
+    // A short pause before answering, so the reply doesn't appear instantly.
+    setTimeout(() => addMessage({ from: "bot", text: chatReply(text) }), 600);
+  });
+}
 
 /* ---------- Shared events ---------- */
 // Swap in the placeholder when a pet photo is missing. Image errors don't
@@ -871,4 +1019,5 @@ document.addEventListener("click", (e) => {
 // confirmed it (an expired session switches back to "Sign In").
 renderAuthNav();
 checkAuth().then(renderAuthNav);
+initChatWidget();
 pages[document.body.dataset.page]?.();

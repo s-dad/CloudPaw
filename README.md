@@ -17,7 +17,7 @@ Week 2-3 - Designed the database and built the pet listings API. Added search an
 
 Week 4 - Added login. Connecting the frontend to the API and planning the move to AWS.
 
-Not built yet: pet photo upload and image storage. Pet photos are static files in `images/pets/`, and pets added through the admin page use a placeholder image.
+Not built yet: pet photo upload and image storage. The sample pets' photos are files in `images/pets/`. For other pets, admins paste a link to a photo (`https://` only), and pets without one show a default image.
 
 ## Getting Started
 
@@ -48,7 +48,7 @@ This creates `backend/cloudpaw.db` and loads the sample pets from `data/pets.jso
 ```bash
 node create-admin.js you@example.com "Your Name"
 ```
-You'll be asked for a password (at least 8 characters). Admins can use the Add Pet and Applications pages. Running it again for the same email resets that account's password.
+You'll be asked for a password (at least 8 characters). Admins can use the Add Pet and Applications pages, and change a pet's photo link from that pet's page. Running it again for the same email resets that account's password.
 
 ### Start the server
 ```bash

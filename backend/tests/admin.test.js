@@ -123,6 +123,70 @@ describe('POST /api/pets (admin only)', () => {
   });
 });
 
+// Links that POST /api/pets and PATCH /api/pets/:id must both reject.
+const INVALID_PHOTO_URLS = [
+  'http://example.com/a.jpg', // not https
+  'javascript:alert(1)',
+  'data:image/png;base64,AAAA',
+  'ftp://example.com/a.jpg',
+  'images/pets/luna.jpg', // relative path
+  '//example.com/a.jpg', // no scheme
+  'https://', // no host
+  'https://exa mple.com/a.jpg', // space inside
+  'https://user:secret@example.com/a.jpg', // username and password
+];
+
+describe('POST /api/pets photo_url (Image URL)', () => {
+  test('saves a valid https link, and GET /api/pets/:id returns it', async () => {
+    for (const link of [
+      'https://images.example.org/pets/luna.jpg',
+      'https://cdn.example.com/photo?id=123&size=large',
+      'HTTPS://Example.com/Upper.png',
+      `https://example.com/${'a'.repeat(1900)}.jpg`,
+    ]) {
+      const res = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Photo', species: 'Cat', photo_url: link } });
+      assert.equal(res.status, 201, link.slice(0, 60));
+      assert.equal(res.body.photo_url, link);
+      assert.equal((await t.api('GET', `/api/pets/${res.body.id}`)).body.photo_url, link);
+    }
+  });
+
+  test('spaces around the link are trimmed', async () => {
+    const res = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Photo', species: 'Cat', photo_url: '  https://example.com/a.jpg  ' } });
+    assert.equal(res.status, 201);
+    assert.equal(res.body.photo_url, 'https://example.com/a.jpg');
+  });
+
+  test('missing or blank: saved as empty, so the site shows its default image', async () => {
+    for (const body of [{ name: 'No Photo', species: 'Dog' }, { name: 'Blank Photo', species: 'Dog', photo_url: '' }, { name: 'Spaces', species: 'Dog', photo_url: '   ' }]) {
+      const res = await t.api('POST', '/api/pets', { token: admin.token, body });
+      assert.equal(res.status, 201, body.name);
+      assert.equal(res.body.photo_url, null);
+    }
+  });
+
+  test('400 under photo_url for anything that is not an https link, and nothing is saved', async () => {
+    const before = t.db.prepare('SELECT COUNT(*) AS n FROM pets').get().n;
+    for (const link of INVALID_PHOTO_URLS) {
+      const res = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Bad', species: 'Dog', photo_url: link } });
+      assert.equal(res.status, 400, link);
+      assert.deepEqual(res.body.fields, { photo_url: 'Must be a full image link starting with https://' }, link);
+    }
+
+    const tooLong = await t.api('POST', '/api/pets', {
+      token: admin.token, body: { name: 'Bad', species: 'Dog', photo_url: `https://example.com/${'a'.repeat(2000)}.jpg` },
+    });
+    assert.equal(tooLong.status, 400);
+    assert.deepEqual(tooLong.body.fields, { photo_url: 'Must be 2000 characters or fewer.' });
+
+    const notText = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Bad', species: 'Dog', photo_url: 42 } });
+    assert.equal(notText.status, 400);
+    assert.deepEqual(notText.body.fields, { photo_url: 'Must be text.' });
+
+    assert.equal(t.db.prepare('SELECT COUNT(*) AS n FROM pets').get().n, before);
+  });
+});
+
 describe('admin role is checked on every request', () => {
   test('an admin demoted in the database is refused right away', async () => {
     const demoted = await t.createAdmin();
@@ -130,5 +194,94 @@ describe('admin role is checked on every request', () => {
 
     t.db.prepare("UPDATE users SET role = 'adopter' WHERE id = ?").run(demoted.user.id);
     assert.equal((await t.api('GET', '/api/inquiries', { token: demoted.token })).status, 403);
+  });
+});
+
+describe('PATCH /api/pets/:id (change a pet\'s photo link)', () => {
+  const GOOD = 'https://images.example.org/pets/fixed.jpg';
+  const addPet = async (body = {}) =>
+    (await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Patchy', species: 'Dog', ...body } })).body;
+  const patch = (id, body, token = admin.token) => t.api('PATCH', `/api/pets/${id}`, { token, body });
+
+  test('401 when signed out, 403 for an adopter, and the photo is unchanged', async () => {
+    const pet = await addPet({ photo_url: 'https://example.com/old.jpg' });
+    const signedOut = await patch(pet.id, { photo_url: GOOD }, null);
+    assert.equal(signedOut.status, 401);
+    const asAdopter = await patch(pet.id, { photo_url: GOOD }, adopter.token);
+    assert.equal(asAdopter.status, 403);
+    assert.equal((await t.api('GET', `/api/pets/${pet.id}`)).body.photo_url, 'https://example.com/old.jpg');
+  });
+
+  test('404 for a pet that does not exist', async () => {
+    for (const id of ['999', 'abc', '0']) {
+      const res = await patch(id, { photo_url: GOOD });
+      assert.equal(res.status, 404, `id ${id}`);
+      assert.deepEqual(res.body, { error: 'Pet not found' });
+    }
+  });
+
+  test('200: sets a new link and returns the updated pet', async () => {
+    const pet = await addPet({ photo_url: 'https://example.com/broken.jpg' });
+    const res = await patch(pet.id, { photo_url: `  ${GOOD}  ` });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.id, pet.id);
+    assert.equal(res.body.photo_url, GOOD);
+    assert.equal((await t.api('GET', `/api/pets/${pet.id}`)).body.photo_url, GOOD);
+  });
+
+  test('200: "" or null removes the link, so the site shows its default image', async () => {
+    for (const empty of ['', null, '   ']) {
+      const pet = await addPet({ photo_url: GOOD });
+      const res = await patch(pet.id, { photo_url: empty });
+      assert.equal(res.status, 200, JSON.stringify(empty));
+      assert.equal(res.body.photo_url, null);
+    }
+  });
+
+  test('only the photo changes: every other field in the body is ignored', async () => {
+    const pet = await addPet({ breed: 'Beagle', age: '3', sex: 'Female' });
+    const res = await patch(pet.id, {
+      photo_url: GOOD, id: 999, name: 'Hacked', species: 'Cat', status: 'adopted', breed: 'X', age: 50, sex: 'Male',
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, { ...pet, photo_url: GOOD });
+    assert.equal((await t.api('GET', '/api/pets/999')).status, 404);
+  });
+
+  test('400 when photo_url is left out, and nothing changes', async () => {
+    const pet = await addPet({ photo_url: GOOD });
+    for (const body of [{}, { name: 'Only a name' }]) {
+      const res = await patch(pet.id, body);
+      assert.equal(res.status, 400);
+      assert.deepEqual(res.body.fields, { photo_url: 'Send a link starting with https://, or an empty value to remove the photo.' });
+    }
+    assert.equal((await t.api('GET', `/api/pets/${pet.id}`)).body.photo_url, GOOD);
+  });
+
+  test('400 for an invalid link, and the photo is unchanged', async () => {
+    const pet = await addPet({ photo_url: GOOD });
+    for (const link of INVALID_PHOTO_URLS) {
+      const res = await patch(pet.id, { photo_url: link });
+      assert.equal(res.status, 400, link);
+      assert.deepEqual(res.body.fields, { photo_url: 'Must be a full image link starting with https://' }, link);
+    }
+    assert.equal((await t.api('GET', `/api/pets/${pet.id}`)).body.photo_url, GOOD);
+  });
+
+  test('uses exactly the same rules as POST /api/pets', async () => {
+    const candidates = [
+      ...INVALID_PHOTO_URLS,
+      GOOD, 'HTTPS://Example.com/Upper.png', 'https://cdn.example.com/p?id=1&s=l',
+      `https://example.com/${'a'.repeat(1990)}`, `https://example.com/${'a'.repeat(2000)}.jpg`, 42, '',
+    ];
+    const pet = await addPet();
+    for (const link of candidates) {
+      const created = await t.api('POST', '/api/pets', { token: admin.token, body: { name: 'Same', species: 'Dog', photo_url: link } });
+      const patched = await patch(pet.id, { photo_url: link });
+      const label = String(link).slice(0, 50);
+      assert.equal(created.status === 201, patched.status === 200, `same accept/reject for ${label}`);
+      if (created.status === 400) assert.deepEqual(patched.body.fields, created.body.fields, `same message for ${label}`);
+      else assert.equal(patched.body.photo_url, created.body.photo_url, `same saved value for ${label}`);
+    }
   });
 });

@@ -12,11 +12,18 @@ const app = express();
 // Helmet's default policy is kept except for these changes:
 //   script-src  'self' (default): only js/script.js from this server. No inline
 //               <script> or onclick="..." anywhere (script-src-attr 'none').
-//   style-src   our CSS, the Google Fonts stylesheet, and inline styles
-//               (chatbot.html has a <style> block and style="..." attributes).
+//   style-src   our CSS, the Google Fonts stylesheet, and inline styles.
+//               No page uses inline styles any more (chatbot.html was removed),
+//               so 'unsafe-inline' could be dropped in a later change.
 //               Narrower than the default, which allows any https: stylesheet.
 //   font-src    our files and fonts.gstatic.com, where Google Fonts serves the
 //               font files. Narrower than the default (any https: or data:).
+//   img-src     our images plus any https: image, because admins can paste a
+//               pet photo link from any site (Image URL on the Add Pet form).
+//               A list of allowed sites would break whenever a shelter uses a
+//               different host. Images can't run code, http: stays blocked,
+//               and Referrer-Policy: no-referrer means the other site isn't
+//               told which page loaded the image.
 //   upgrade-insecure-requests  off: locally the site runs on plain http://, and
 //               this would make browsers request everything over https://.
 //               On AWS, CloudFront enforces HTTPS instead.
@@ -29,6 +36,7 @@ app.use(
       directives: {
         'style-src': ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
         'font-src': ["'self'", 'https://fonts.gstatic.com'],
+        'img-src': ["'self'", 'data:', 'https:'],
         'upgrade-insecure-requests': null,
       },
     },
@@ -127,7 +135,34 @@ const SEX_OPTIONS = ['Male', 'Female', 'Unknown'];
 const AGE_MAX = 100;
 
 // Checks the fields for a new pet. Returns { values, errors } like validateInquiry.
-// Only these fields are read; anything else in the body (id, status, photo_url) is ignored.
+// Image links (photo_url): https only, so a pasted link can't be http:// (mixed
+// content) or something like javascript:. The server only stores the link and
+// never fetches it, so it can't be used to make the server request other sites.
+const PHOTO_URL_MAX = 2000;
+function isHttpsUrl(value) {
+  if (!/^https:\/\//i.test(value) || /\s/.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+// Reads an optional photo_url. Returns { value } (null when empty, meaning the
+// site shows its default image) or { error }. POST /pets and PATCH /pets/:id
+// both use this, so they apply exactly the same rules.
+function readPhotoUrl(raw) {
+  if (raw === undefined || raw === null) return { value: null };
+  if (typeof raw !== 'string') return { error: 'Must be text.' };
+  const value = raw.trim();
+  if (!value) return { value: null };
+  if (value.length > PHOTO_URL_MAX) return { error: `Must be ${PHOTO_URL_MAX} characters or fewer.` };
+  if (!isHttpsUrl(value)) return { error: 'Must be a full image link starting with https://' };
+  return { value };
+}
+
+// Only these fields are read; anything else in the body (id, status) is ignored.
 function validatePet(body) {
   const errors = {};
   const values = {};
@@ -161,6 +196,10 @@ function validatePet(body) {
   values.description = text('description', { required: false, max: 2000 });
   // Optional, so requests that don't send it still work; saved as "Unknown".
   values.sex = text('sex', { required: false, max: 20 });
+  // Optional link to the pet's photo; empty means the site shows its fallback image.
+  const photo = readPhotoUrl(body.photo_url);
+  values.photo_url = photo.value ?? null;
+  if (photo.error) errors.photo_url = photo.error;
 
   if (values.species && !SPECIES_OPTIONS.includes(values.species)) {
     errors.species = `Must be one of: ${SPECIES_OPTIONS.join(', ')}.`;
@@ -198,21 +237,52 @@ api.post('/pets', auth.requireAdmin, (req, res) => {
   }
 
   try {
-    const result = db.prepare(`INSERT INTO pets (name, species, breed, age, sex, location, description)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+    const result = db.prepare(`INSERT INTO pets (name, species, breed, age, sex, location, description, photo_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
       values.name,
       values.species,
       values.breed,
       values.age,
       values.sex,
       values.location,
-      values.description
+      values.description,
+      values.photo_url
     );
     const pet = db.prepare('SELECT * FROM pets WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(pet);
   } catch (err) {
     console.error('Failed to save pet:', err);
     res.status(500).json({ error: 'Could not save the pet. Please try again later.' });
+  }
+});
+
+// Admin only: change a pet's photo link, e.g. to fix one that no longer loads.
+// Body: { photo_url }. A link sets it; "" or null removes it (the site then
+// shows its default image). Same rules as POST /pets (readPhotoUrl). Every
+// other field in the body is ignored. -> 200 with the updated pet.
+api.patch('/pets/:id', auth.requireAdmin, (req, res) => {
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  // Leaving photo_url out is an error, so an empty request can't look like it worked.
+  if (!Object.hasOwn(body, 'photo_url')) {
+    return res.status(400).json({
+      error: 'Please fix the highlighted fields.',
+      fields: { photo_url: 'Send a link starting with https://, or an empty value to remove the photo.' },
+    });
+  }
+  const photo = readPhotoUrl(body.photo_url);
+  if (photo.error) {
+    return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: { photo_url: photo.error } });
+  }
+
+  // Same rule as GET /pets/:id: anything that isn't a positive whole number can't match.
+  const id = /^[1-9]\d*$/.test(req.params.id) ? Number(req.params.id) : null;
+  try {
+    const result = id && db.prepare('UPDATE pets SET photo_url = ? WHERE id = ?').run(photo.value, id);
+    if (!result || result.changes === 0) return res.status(404).json({ error: 'Pet not found' });
+    res.json(db.prepare('SELECT * FROM pets WHERE id = ?').get(id));
+  } catch (err) {
+    console.error('Failed to update pet photo:', err);
+    res.status(500).json({ error: 'Could not update the photo. Please try again later.' });
   }
 });
 

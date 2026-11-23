@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@1&family=Oswald:wght@300;500&family=Roboto:ital@1&display=swap" rel="stylesheet" />
-  <link rel="icon" href="images/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
   <meta name="robots" content="noindex" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -18,7 +18,7 @@
   <header class="site-header">
     <nav class="nav" aria-label="Primary">
       <a class="logo" href="index.html" aria-label="CloudPaw home">
-        <img src="images/placeholder.svg" alt="" width="48" height="48" />
+        <img src="images/logo.svg" alt="" width="61" height="36" />
         <span class="logo-text">CloudPaw</span>
       </a>
 
@@ -35,7 +35,6 @@
         <li><a href="index.html">Home</a></li>
         <li><a href="pets.html">Find a Pet</a></li>
         <li><a href="about.html">About Us</a></li>
-        <li><a href="chatbot.html">Ask AI</a></li>
         <li data-admin-only hidden><a href="admin-add.html" aria-current="page">Admin: Add Pet</a></li>
         <li data-admin-only hidden><a href="admin-applications.html">Admin: Applications</a></li>
       </ul>
@@ -73,13 +72,13 @@
           </div>
 
           <div class="field">
-            <label for="pet-breed">Breed <span class="required" aria-hidden="true">*</span></label>
-            <input type="text" id="pet-breed" name="breed" required />
+            <label for="pet-breed">Breed</label>
+            <input type="text" id="pet-breed" name="breed" />
           </div>
 
           <div class="field">
-            <label for="pet-age">Age (Years) <span class="required" aria-hidden="true">*</span></label>
-            <input type="number" id="pet-age" name="age" required min="0" />
+            <label for="pet-age">Age (Years)</label>
+            <input type="number" id="pet-age" name="age" min="0" />
           </div>
 
           <div class="field">
@@ -93,24 +92,26 @@
           </div>
 
           <div class="field field--full">
-            <label for="pet-location">Location <span class="required" aria-hidden="true">*</span></label>
-            <input type="text" id="pet-location" name="location" required placeholder="City, State" />
+            <label for="pet-location">Location</label>
+            <input type="text" id="pet-location" name="location" placeholder="City, State" />
           </div>
 
           <div class="field field--full">
-            <label for="pet-photo">Upload Photo</label>
-            <input type="file" id="pet-photo" accept="image/*" aria-describedby="pet-photo-hint" />
-            <p id="pet-photo-hint" class="field-hint">Photo uploads aren't connected yet, so new pets show a placeholder image.</p>
+            <label for="pet-photo-url">Image URL</label>
+            <input type="url" id="pet-photo-url" name="photo_url" maxlength="2000"
+                   pattern="https://.*" title="A full link that starts with https://"
+                   placeholder="https://…" aria-describedby="pet-photo-hint" />
+            <p id="pet-photo-hint" class="field-hint">Optional. Paste a link to the pet's photo that starts with https://. If the link doesn't load, the site shows a default image.</p>
           </div>
 
           <div class="field field--full">
-            <label for="pet-description">Description <span class="required" aria-hidden="true">*</span></label>
-            <textarea id="pet-description" name="description" required rows="4"></textarea>
+            <label for="pet-description">Description</label>
+            <textarea id="pet-description" name="description" rows="4"></textarea>
           </div>
         </div>
 
         <div class="form-actions">
-          <button type="submit" class="btn btn-primary">Save Pet to Database</button>
+          <button type="submit" class="btn btn-primary">Add Pet</button>
         </div>
         <p id="add-pet-status" class="status" role="status" aria-live="polite"></p>
       </form>
@@ -121,7 +122,7 @@
     <div class="footer-inner">
       <div>
         <h3>CloudPaw</h3>
-        <p class="muted">A cloud-native pet adoption platform built on AWS.</p>
+        <p class="muted">Helping shelter pets find their forever homes.</p>
       </div>
       <div>
         <h4>About</h4>
@@ -134,7 +135,6 @@
       <div>
         <h4>Contact</h4>
         <ul>
-          <li><a href="mailto:hello@cloudpaw.example">hello@cloudpaw.example</a></li>
           <li><a href="about.html#contact">Send us a message</a></li>
         </ul>
       </div>

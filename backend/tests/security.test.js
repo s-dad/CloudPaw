@@ -11,7 +11,10 @@ after(() => t.stop());
 describe('only the public frontend is served', () => {
   // Sanity check, so the 404s below mean "blocked", not "server serves nothing".
   test('public pages and assets load', async () => {
-    for (const p of ['/', '/index.html', '/pets.html', '/admin-add.html', '/css/style.css', '/js/script.js', '/data/pets.json']) {
+    for (const p of [
+      '/', '/index.html', '/pets.html', '/admin-add.html', '/css/style.css', '/js/script.js', '/data/pets.json',
+      '/images/logo.svg', '/images/favicon.svg', '/images/placeholder.svg',
+    ]) {
       assert.equal(await t.rawGet(p), 200, p);
     }
   });
@@ -50,7 +53,7 @@ describe('only the public frontend is served', () => {
 });
 
 describe('protected fields cannot be set from the request', () => {
-  test('POST /api/pets ignores id, status and photo_url in the body', async () => {
+  test('POST /api/pets ignores id and status in the body (photo_url is saved when valid)', async () => {
     const admin = await t.createAdmin();
     const res = await t.api('POST', '/api/pets', {
       token: admin.token,
@@ -59,13 +62,13 @@ describe('protected fields cannot be set from the request', () => {
         species: 'Dog',
         id: 999,
         status: 'adopted',
-        photo_url: 'https://evil.example/x.jpg',
+        photo_url: 'https://images.example.org/rex.jpg',
       },
     });
     assert.equal(res.status, 201);
     assert.notEqual(res.body.id, 999);
     assert.equal(res.body.status, 'available');
-    assert.equal(res.body.photo_url, null);
+    assert.equal(res.body.photo_url, 'https://images.example.org/rex.jpg');
     assert.equal((await t.api('GET', '/api/pets/999')).status, 404);
   });
 });
@@ -140,6 +143,7 @@ describe('security headers (helmet)', () => {
       assert.equal(directives['frame-ancestors'], "'self'");
       assert.equal(directives['style-src'], "'self' https://fonts.googleapis.com 'unsafe-inline'");
       assert.equal(directives['font-src'], "'self' https://fonts.gstatic.com");
+      assert.equal(directives['img-src'], "'self' data: https:", 'pasted https image links, never http:');
       assert.ok(!('upgrade-insecure-requests' in directives), 'off for local http');
     });
   }
