@@ -11,8 +11,6 @@
 
 const CONFIG = {
   API_BASE: "/api",
-  USE_LOCAL_DATA: false,
-  LOCAL_DATA_URL: "./data/pets.json",
 };
 
 const PLACEHOLDER_IMAGE = "images/placeholder.svg";
@@ -41,15 +39,6 @@ const formatAge = (age) => {
 
 const getParam = (name) => new URLSearchParams(window.location.search).get(name) || "";
 
-function filterPets(pets, query = "") {
-  const q = query.toLowerCase();
-  if (!q) return pets;
-  return pets.filter((pet) =>
-    [pet.name, pet.breed, pet.species, pet.location]
-      .some((field) => String(field || "").toLowerCase().includes(q))
-  );
-}
-
 /* ---------- Data layer ---------- */
 async function getJson(url) {
   const res = await fetch(url);
@@ -57,13 +46,9 @@ async function getJson(url) {
   return res.json();
 }
 
-// Pets matching the search text and species (both optional). The API filters
-// with ?q= and ?species=; local JSON has to be filtered here.
+// Pets matching the search text and species (both optional), filtered by the
+// API with ?q= and ?species=.
 async function fetchPets(query = "", species = "") {
-  if (CONFIG.USE_LOCAL_DATA) {
-    const pets = filterPets(await getJson(CONFIG.LOCAL_DATA_URL), query);
-    return species ? pets.filter((pet) => pet.species === species) : pets;
-  }
   const params = new URLSearchParams();
   if (query) params.set("q", query);
   if (species) params.set("species", species);
@@ -72,10 +57,6 @@ async function fetchPets(query = "", species = "") {
 }
 
 async function fetchPet(id) {
-  if (CONFIG.USE_LOCAL_DATA) {
-    const pets = await getJson(CONFIG.LOCAL_DATA_URL);
-    return pets.find((pet) => String(pet.id) === String(id)) || null;
-  }
   const res = await fetch(`${CONFIG.API_BASE}/pets/${encodeURIComponent(id)}`);
   // 404 means "no such pet": return null so the page shows "couldn't find that pet".
   // Any other failure throws, so the page shows "couldn't load this pet right now".
@@ -84,16 +65,11 @@ async function fetchPet(id) {
   return res.json();
 }
 
-// Sends form data to the API. In local mode the data is only logged to the
-// console; nothing is stored or emailed.
+// Sends form data to the API.
 // On an error response it throws an Error that also carries the API's reply:
 // err.status, err.apiMessage (the API's "error" text) and err.fields
 // ({ field: message } for each invalid field, empty if none).
 async function submitForm(path, data) {
-  if (CONFIG.USE_LOCAL_DATA) {
-    console.info(`[local mode] POST ${path} was not sent:`, data);
-    return;
-  }
   const res = await fetch(`${CONFIG.API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -169,7 +145,7 @@ async function signOut() {
 // reached, keeps the saved user rather than signing anyone out.
 async function refreshAuth() {
   const auth = getAuth();
-  if (!auth || CONFIG.USE_LOCAL_DATA) return auth?.user || null;
+  if (!auth) return null;
   try {
     const res = await fetch(`${CONFIG.API_BASE}/auth/me`, { headers: authHeaders() });
     if (res.status === 401) {
@@ -288,10 +264,6 @@ function wireAuthForm({ form, statusEl, path, buildBody, beforeSubmit, onFailure
     beforeSubmit?.();
     if (!form.checkValidity()) {
       form.reportValidity();
-      return;
-    }
-    if (CONFIG.USE_LOCAL_DATA) {
-      setStatus("Signing in needs the CloudPaw API, which isn't connected in local mode.", true);
       return;
     }
 
@@ -825,9 +797,9 @@ const pages = {
 
         // Fake AI logic for the demo
         if (userText.toLowerCase().includes("luna")) {
-          botMsg.textContent = "Luna is a 2-year-old Labrador Retriever mix. She is very friendly, high-energy, and loves to play fetch!";
+          botMsg.textContent = "Luna is a 2-year-old female Labrador Retriever in Columbus, OH. She is friendly, high-energy, and loves fetching tennis balls!";
         } else if (userText.toLowerCase().includes("cat")) {
-          botMsg.textContent = "We currently have Milo and Oliver available. Milo is a laid-back tabby, and Oliver is a gentle Maine Coon.";
+          botMsg.textContent = "We currently have Milo and Oliver available. Milo is a laid-back 3-year-old tabby in Cleveland, OH, and Oliver is a gentle 4-year-old Maine Coon in Dayton, OH.";
         } else {
           botMsg.textContent = "That's a great question! Once I am connected to AWS Bedrock, I will search our database and documents to give you a detailed answer.";
         }
