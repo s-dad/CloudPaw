@@ -99,15 +99,15 @@ api.get('/pets', (req, res) => {
     params.push(species);
   }
 
-  // Free-text search: case-insensitive partial match on name, species, or breed.
+  // Free-text search: case-insensitive partial match on name, species, breed,
+  // or location (city, e.g. "Columbus").
   // % and _ are wildcards in LIKE, so escape them to search for them literally.
   const term = typeof q === 'string' ? q.trim() : '';
   if (term) {
     const pattern = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
-    conditions.push(
-      "(name LIKE ? ESCAPE '\\' OR species LIKE ? ESCAPE '\\' OR breed LIKE ? ESCAPE '\\')"
-    );
-    params.push(pattern, pattern, pattern);
+    const searched = ['name', 'species', 'breed', 'location'];
+    conditions.push(`(${searched.map((column) => `${column} LIKE ? ESCAPE '\\'`).join(' OR ')})`);
+    params.push(...searched.map(() => pattern));
   }
 
   const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : '';

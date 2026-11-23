@@ -57,12 +57,18 @@ async function getJson(url) {
   return res.json();
 }
 
-async function fetchPets(query = "") {
+// Pets matching the search text and species (both optional). The API filters
+// with ?q= and ?species=; local JSON has to be filtered here.
+async function fetchPets(query = "", species = "") {
   if (CONFIG.USE_LOCAL_DATA) {
-    // The API filters server-side; local JSON has to be filtered here.
-    return filterPets(await getJson(CONFIG.LOCAL_DATA_URL), query);
+    const pets = filterPets(await getJson(CONFIG.LOCAL_DATA_URL), query);
+    return species ? pets.filter((pet) => pet.species === species) : pets;
   }
-  return getJson(`${CONFIG.API_BASE}/pets${query ? `?q=${encodeURIComponent(query)}` : ""}`);
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (species) params.set("species", species);
+  const search = params.toString();
+  return getJson(`${CONFIG.API_BASE}/pets${search ? `?${search}` : ""}`);
 }
 
 async function fetchPet(id) {
@@ -492,8 +498,7 @@ async function loadPetGrid({ listEl, statusEl, query = "", species = "", limit =
   setStatus("Loading pets…");
 
   try {
-    let pets = await fetchPets(query);
-    if (species) pets = pets.filter((pet) => pet.species === species);
+    let pets = await fetchPets(query, species);
     if (limit) pets = pets.slice(0, limit);
 
     if (pets.length === 0) {
