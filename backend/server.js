@@ -121,10 +121,11 @@ if (config.logRequests) {
 // Helmet's default policy is kept except for these changes:
 //   script-src  'self' (default): only js/script.js from this server. No inline
 //               <script> or onclick="..." anywhere (script-src-attr 'none').
-//   style-src   our CSS, the Google Fonts stylesheet, and inline styles.
-//               No page uses inline styles any more (chatbot.html was removed),
-//               so 'unsafe-inline' could be dropped in a later change.
-//               Narrower than the default, which allows any https: stylesheet.
+//   style-src   our CSS and the Google Fonts stylesheet only. No inline
+//               styles: no <style> blocks or style="..." attributes, in the
+//               pages or in HTML built by script.js (keep it that way; put new
+//               styles in css/style.css). Narrower than the default, which
+//               allows any https: stylesheet and inline styles.
 //   font-src    our files and fonts.gstatic.com, where Google Fonts serves the
 //               font files. Narrower than the default (any https: or data:).
 //   img-src     our images plus any https: image, because admins can paste a
@@ -143,7 +144,7 @@ app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
-        'style-src': ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
+        'style-src': ["'self'", 'https://fonts.googleapis.com'],
         'font-src': ["'self'", 'https://fonts.gstatic.com'],
         'img-src': ["'self'", 'data:', 'https:'],
         'upgrade-insecure-requests': null,
