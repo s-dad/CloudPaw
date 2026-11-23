@@ -83,7 +83,6 @@ function createSession(userId) {
   return token;
 }
 
-// Reads the Bearer token from the request, or null.
 function getToken(req) {
   const match = /^Bearer\s+(\S+)$/i.exec(req.get('Authorization') || '');
   return match ? match[1] : null;

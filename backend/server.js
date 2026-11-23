@@ -5,17 +5,128 @@ const helmet = require('helmet');
 const { rateLimit } = require('express-rate-limit');
 const db = require('./db');
 const auth = require('./auth');
+
+/* ---------- Settings ---------- */
+// Everything that differs between running locally and on AWS comes from
+// environment variables. Unset means today's local behavior. (DB_PATH is read
+// in db.js; the RATE_LIMIT_* values are read with the rate limits below.)
+// An invalid value stops the server at startup with a clear message, instead
+// of quietly running with a setting nobody intended.
+
+// PORT: where `npm start` listens (0 lets the operating system pick).
+// Not used on Lambda, where API Gateway calls the app directly.
+function readPort(raw) {
+  if (raw === undefined || raw === '') return 3000;
+  if (!/^\d+$/.test(raw) || Number(raw) > 65535) {
+    throw new Error(`PORT must be a whole number from 0 to 65535 (got "${raw}").`);
+  }
+  return Number(raw);
+}
+
+// ALLOWED_ORIGIN: comma-separated list of sites allowed to call the API from a
+// browser, e.g. "http://localhost:3000,https://d1234.cloudfront.net".
+// Unset: any site may (Access-Control-Allow-Origin: *). On AWS, set it to the
+// CloudFront address so only the real site can call the API.
+function readOrigins(raw) {
+  if (raw === undefined || raw.trim() === '') return null;
+  const entries = raw.split(',').map((entry) => entry.trim()).filter(Boolean);
+  if (!entries.length) throw new Error('ALLOWED_ORIGIN is set but lists no addresses.');
+  return entries.map((entry) => {
+    let url = null;
+    try {
+      url = new URL(entry);
+    } catch {
+      // handled below
+    }
+    const ok = url && ['http:', 'https:'].includes(url.protocol)
+      && url.origin === entry.replace(/\/$/, '').toLowerCase();
+    if (!ok) {
+      throw new Error(
+        `ALLOWED_ORIGIN entries must be an address like https://example.com or http://localhost:3000, with no path (got "${entry}").`,
+      );
+    }
+    return url.origin;
+  });
+}
+
+// LOG_REQUESTS: one JSON log line per /api request. On unless set to false
+// (the tests turn it off to keep their output quiet).
+function readOnOff(name, raw, fallback) {
+  if (raw === undefined || raw === '') return fallback;
+  const value = raw.trim().toLowerCase();
+  if (['true', '1', 'yes', 'on'].includes(value)) return true;
+  if (['false', '0', 'no', 'off'].includes(value)) return false;
+  throw new Error(`${name} must be true or false (got "${raw}").`);
+}
+
+const config = {
+  logRequests: readOnOff('LOG_REQUESTS', process.env.LOG_REQUESTS, true),
+  port: readPort(process.env.PORT),
+  // HOST: which network address to listen on. Unset: every interface, IPv4 and
+  // IPv6 (Node's default when no host is given). 127.0.0.1 = this computer
+  // only. Not used on Lambda.
+  host: process.env.HOST || undefined,
+  // NODE_ENV: "production" makes Express and its libraries use their
+  // production settings. API errors never include details either way.
+  nodeEnv: process.env.NODE_ENV || 'development',
+  allowedOrigins: readOrigins(process.env.ALLOWED_ORIGIN),
+};
+
+/* ---------- Logging ---------- */
+// One JSON object per line, so CloudWatch can search by field (level, path,
+// status...). Only the method, the path without its query string, the status
+// and timing are logged: never headers (they carry sign-in tokens), request
+// bodies (passwords, applicants' details) or query strings.
+const pathOf = (req) => req.originalUrl.split('?')[0];
+
+function writeLog(entry) {
+  const line = JSON.stringify({ time: new Date().toISOString(), ...entry });
+  if (entry.level === 'info') console.log(line);
+  else console.error(line);
+}
+
+// An unexpected error, with its stack, for the server log only.
+function logError(req, message, err) {
+  writeLog({
+    level: 'error', message, method: req.method, path: pathOf(req),
+    error: err?.message, stack: err?.stack,
+  });
+}
+
+if (config.nodeEnv === 'production' && !config.allowedOrigins) {
+  writeLog({ level: 'warn', message: 'NODE_ENV is production but ALLOWED_ORIGIN is not set, so any website can call this API from a browser.' });
+}
+
 const app = express();
+app.locals.config = config; // for tests
+
+// Request log: one line per /api request when it finishes. First in the chain,
+// so requests rejected early (bad JSON, rate limits, CORS preflights) are
+// logged too and the time covers everything.
+if (config.logRequests) {
+  app.use((req, res, next) => {
+    const path = pathOf(req);
+    if (path !== '/api' && !path.startsWith('/api/')) return next();
+    const start = process.hrtime.bigint();
+    res.on('finish', () => {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      writeLog({ level: 'info', method: req.method, path, status: res.statusCode, ms: Math.round(ms * 10) / 10 });
+    });
+    next();
+  });
+}
 
 // Security headers on every response (helmet's defaults), plus a
 // Content-Security-Policy that only lets the browser load what the site uses.
 // Helmet's default policy is kept except for these changes:
-//   script-src  'self' (default): only js/script.js from this server. No inline
-//               <script> or onclick="..." anywhere (script-src-attr 'none').
-//   style-src   our CSS, the Google Fonts stylesheet, and inline styles.
-//               No page uses inline styles any more (chatbot.html was removed),
-//               so 'unsafe-inline' could be dropped in a later change.
-//               Narrower than the default, which allows any https: stylesheet.
+//   script-src  'self' (default): only script files from this server
+//               (js/config.js, js/script.js). No inline <script> or
+//               onclick="..." anywhere (script-src-attr 'none').
+//   style-src   our CSS and the Google Fonts stylesheet only. No inline
+//               styles: no <style> blocks or style="..." attributes, in the
+//               pages or in HTML built by script.js (keep it that way; put new
+//               styles in css/style.css). Narrower than the default, which
+//               allows any https: stylesheet and inline styles.
 //   font-src    our files and fonts.gstatic.com, where Google Fonts serves the
 //               font files. Narrower than the default (any https: or data:).
 //   img-src     our images plus any https: image, because admins can paste a
@@ -34,7 +145,7 @@ app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
-        'style-src': ["'self'", 'https://fonts.googleapis.com', "'unsafe-inline'"],
+        'style-src': ["'self'", 'https://fonts.googleapis.com'],
         'font-src': ["'self'", 'https://fonts.gstatic.com'],
         'img-src': ["'self'", 'data:', 'https:'],
         'upgrade-insecure-requests': null,
@@ -42,12 +153,29 @@ app.use(
     },
   }),
 );
-app.use(cors());
+// CORS: which other sites may call the API from a browser (see ALLOWED_ORIGIN).
+// The site itself is served from the same address as the API, so it doesn't
+// need CORS locally. Tokens go in the Authorization header, not cookies.
+app.use(cors(config.allowedOrigins ? { origin: config.allowedOrigins } : {}));
 app.use(express.json());
 
 // All JSON API routes live under /api (e.g. /api/pets), so they can never
 // collide with the frontend's page and asset paths.
 const api = express.Router();
+
+// Deployment check: 200 {"status":"ok"} when the database answers a simple
+// query, otherwise a JSON 503 (the real error goes to the log only). Before
+// the rate limits and never cached, so monitoring can call it freely.
+api.get('/health', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    db.prepare('SELECT 1 AS ok').get();
+    res.json({ status: 'ok' });
+  } catch (err) {
+    logError(req, 'Health check failed', err);
+    res.status(503).json({ status: 'error', error: 'Database unavailable' });
+  }
+});
 
 /* ---------- Rate limits ---------- */
 // Slows down password guessing and form spam: each client IP address gets a
@@ -61,7 +189,7 @@ const api = express.Router();
 // count; there, API Gateway throttling will do this job instead.
 const RATE_WINDOW_MS = 15 * 60 * 1000;
 
-// A positive whole number from the environment, or the default.
+// A positive whole number from the environment; anything else uses the default.
 function limitFromEnv(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isInteger(value) && value > 0 ? value : fallback;
@@ -134,7 +262,6 @@ const SPECIES_OPTIONS = ['Dog', 'Cat', 'Other'];
 const SEX_OPTIONS = ['Male', 'Female', 'Unknown'];
 const AGE_MAX = 100;
 
-// Checks the fields for a new pet. Returns { values, errors } like validateInquiry.
 // Image links (photo_url): https only, so a pasted link can't be http:// (mixed
 // content) or something like javascript:. The server only stores the link and
 // never fetches it, so it can't be used to make the server request other sites.
@@ -162,7 +289,9 @@ function readPhotoUrl(raw) {
   return { value };
 }
 
-// Only these fields are read; anything else in the body (id, status) is ignored.
+// Checks the fields for a new pet and returns { values, errors }, like
+// validateInquiry. Only these fields are read; anything else in the body
+// (id, status) is ignored.
 function validatePet(body) {
   const errors = {};
   const values = {};
@@ -251,7 +380,7 @@ api.post('/pets', auth.requireAdmin, (req, res) => {
     const pet = db.prepare('SELECT * FROM pets WHERE id = ?').get(result.lastInsertRowid);
     res.status(201).json(pet);
   } catch (err) {
-    console.error('Failed to save pet:', err);
+    logError(req, 'Failed to save pet', err);
     res.status(500).json({ error: 'Could not save the pet. Please try again later.' });
   }
 });
@@ -274,14 +403,14 @@ api.patch('/pets/:id', auth.requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Please fix the highlighted fields.', fields: { photo_url: photo.error } });
   }
 
-  // Same rule as GET /pets/:id: anything that isn't a positive whole number can't match.
+  // Only a positive whole number can be a pet's id; anything else gets the 404 below.
   const id = /^[1-9]\d*$/.test(req.params.id) ? Number(req.params.id) : null;
   try {
     const result = id && db.prepare('UPDATE pets SET photo_url = ? WHERE id = ?').run(photo.value, id);
     if (!result || result.changes === 0) return res.status(404).json({ error: 'Pet not found' });
     res.json(db.prepare('SELECT * FROM pets WHERE id = ?').get(id));
   } catch (err) {
-    console.error('Failed to update pet photo:', err);
+    logError(req, 'Failed to update pet photo', err);
     res.status(500).json({ error: 'Could not update the photo. Please try again later.' });
   }
 });
@@ -398,7 +527,7 @@ api.post('/inquiries', (req, res) => {
     );
     res.status(201).json({ id: Number(result.lastInsertRowid), message: 'Application received!' });
   } catch (err) {
-    console.error('Failed to save inquiry:', err);
+    logError(req, 'Failed to save inquiry', err);
     res.status(500).json({ error: 'Could not save your application. Please try again later.' });
   }
 });
@@ -421,7 +550,7 @@ api.get('/inquiries', auth.requireAdmin, (req, res) => {
     const rows = db.prepare(`${INQUIRY_SELECT} ORDER BY i.created_at DESC, i.id DESC`).all();
     res.json(rows);
   } catch (err) {
-    console.error('Failed to load inquiries:', err);
+    logError(req, 'Failed to load inquiries', err);
     res.status(500).json({ error: 'Could not load applications.' });
   }
 });
@@ -446,7 +575,7 @@ api.patch('/inquiries/:id', auth.requireAdmin, (req, res) => {
     });
   }
 
-  // Same rule as GET /pets/:id: anything that isn't a positive whole number can't match.
+  // Only a positive whole number can be an application's id; anything else gets the 404 below.
   const id = /^[1-9]\d*$/.test(req.params.id) ? Number(req.params.id) : null;
 
   // All checks and updates run in one transaction, so two decisions made at
@@ -483,7 +612,7 @@ api.patch('/inquiries/:id', auth.requireAdmin, (req, res) => {
     const result = decide();
     res.status(result.status).json(result.body);
   } catch (err) {
-    console.error('Failed to update inquiry:', err);
+    logError(req, 'Failed to update inquiry', err);
     res.status(500).json({ error: 'Could not update the application. Please try again later.' });
   }
 });
@@ -542,7 +671,7 @@ api.post('/messages', (req, res) => {
       .run(values.name, values.email, values.message);
     res.status(201).json({ id: Number(result.lastInsertRowid), message: 'Message sent!' });
   } catch (err) {
-    console.error('Failed to save message:', err);
+    logError(req, 'Failed to save message', err);
     res.status(500).json({ error: 'Could not send your message. Please try again later.' });
   }
 });
@@ -552,18 +681,21 @@ api.use((req, res) => res.status(404).json({ error: 'Not found' }));
 app.use('/api', api);
 
 /* ---------- Frontend ---------- */
-// The site's files sit in the repo root next to backend/, which holds the
-// database (users, password hashes, sessions). So never serve the root folder
-// as a whole: expose only the frontend, the same allowlist the CI deploy uses
-// (*.html, css/, js/, images/, data/).
-const SITE_ROOT = path.join(__dirname, '..');
-for (const dir of ['css', 'js', 'images', 'data']) {
-  app.use(`/${dir}`, express.static(path.join(SITE_ROOT, dir)));
-}
-// Top-level pages only: "/" -> index.html, "/pets.html", "/about.html", ...
-app.get(/^\/(?:[\w-]+\.html)?$/, (req, res, next) => {
-  const file = req.path === '/' ? 'index.html' : req.path.slice(1);
-  res.sendFile(file, { root: SITE_ROOT }, (err) => err && next());
+// Everything in frontend/ is public, and it's the same set of files that goes
+// to S3. Nothing else is served, so backend/ (the database, with users,
+// password hashes and sessions) can't be reached. "/" -> index.html;
+// redirect: false keeps "/css" a 404 instead of redirecting to "/css/".
+const FRONTEND = path.join(__dirname, '..', 'frontend');
+app.use(express.static(FRONTEND, { redirect: false }));
+
+// Anything else that isn't a page or file: the site's 404 page, with status
+// 404 (unknown /api paths already got a JSON 404 above). On AWS, CloudFront
+// serves the same 404.html as its error page.
+app.use((req, res) => {
+  res.status(404);
+  const notFoundText = () => res.type('text').send('Not found');
+  if (req.method !== 'GET' && req.method !== 'HEAD') return notFoundText();
+  res.sendFile('404.html', { root: FRONTEND }, (err) => err && !res.headersSent && notFoundText());
 });
 
 /* ---------- Errors ---------- */
@@ -594,21 +726,33 @@ app.use((err, req, res, next) => {
   // Keep their 4xx status so the client's mistake isn't reported as a server error.
   const status = err.status || err.statusCode;
   if (err.expose && status >= 400 && status < 500) {
-    console.error(`${req.method} ${req.originalUrl}: ${status} ${err.type || err.message}`);
+    // Only the error's type: a JSON parser's message can quote part of the
+    // body, which could be a password.
+    writeLog({
+      level: 'warn', message: 'Request body could not be read', method: req.method,
+      path: pathOf(req), status, type: err.type || 'unknown',
+    });
     return res.status(status).json({
       error: BODY_ERROR_MESSAGES[err.type] || 'The request could not be read.',
     });
   }
 
   // Anything else is unexpected: log the details here, send none to the client.
-  console.error(`${req.method} ${req.originalUrl}: unexpected error`, err);
+  logError(req, 'Unexpected error', err);
   res.status(500).json({ error: 'Something went wrong. Please try again later.' });
 });
 
 module.exports = app;
 
-// Listen on port 3000 only when this file is run directly (node server.js or
-// npm start). Tests require it instead and start the app on a free port.
+// Listen only when this file is run directly (node server.js or npm start).
+// Tests require it instead and start the app on a free port; on Lambda a
+// handler will call the app without listening at all.
 if (require.main === module) {
-  app.listen(3000, () => console.log('CloudPaw on http://localhost:3000 (API at /api)'));
+  const { port, host } = config;
+  const onListening = () => {
+    const shown = !host || host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
+    console.log(`CloudPaw on http://${shown}:${server.address().port} (API at /api)`);
+  };
+  // No host given = every interface, IPv4 and IPv6.
+  const server = host ? app.listen(port, host, onListening) : app.listen(port, onListening);
 }

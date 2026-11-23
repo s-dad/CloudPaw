@@ -5,7 +5,7 @@
      1. creates a temporary folder with an empty database file
      2. points DB_PATH at it BEFORE the app is loaded, so the real
         backend/cloudpaw.db is never opened
-     3. seeds it with the real seed.js (the 6 pets from data/pets.json)
+     3. seeds it with the real seed.js (the 6 pets from backend/data/pets.json)
      4. starts the app on a free port (port 0 = let the OS pick)
    stop() closes the server and database and deletes the temporary folder.
 
@@ -31,6 +31,8 @@ async function startTestServer() {
   for (const name of ['RATE_LIMIT_LOGIN', 'RATE_LIMIT_SIGNUP', 'RATE_LIMIT_FORMS']) {
     process.env[name] ??= '1000';
   }
+  // No request log lines in the test output, unless a test file turns them on.
+  process.env.LOG_REQUESTS ??= 'false';
 
   const db = require('../db');
   // Safety check: stop if the app opened anything other than the temporary

@@ -68,7 +68,7 @@ describe('node seed.js', () => {
   });
 
   test('on an older database (no location or sex columns): adds the columns and fills them in, keeping ages', () => {
-    // The pets table as first created (PR #7), seeded before location and sex existed.
+    // The pets table as it was first created, seeded before location and sex existed.
     const dbPath = newDbPath();
     edit(dbPath, `
       CREATE TABLE pets (
@@ -109,7 +109,7 @@ describe('node seed.js', () => {
     assert.equal(pets.Bella.location, 'Cincinnati, OH', 'an empty string counts as missing');
   });
 
-  test('leaves pets that are not in data/pets.json alone', () => {
+  test('leaves pets that are not in backend/data/pets.json alone', () => {
     const dbPath = newDbPath();
     runSeed(dbPath);
     edit(dbPath, "INSERT INTO pets (name, species) VALUES ('Biscuit', 'Dog')");

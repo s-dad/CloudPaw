@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="CloudPaw — a cloud-powered pet adoption platform connecting shelters with adopters." />
-  <title>CloudPaw | Pet Adoption</title>
-
+  <meta name="robots" content="noindex" />
+  <!-- Shown for any unknown address, which can be deep (e.g. /a/b/c), so all
+       links on this page start from the site root. -->
+  <base href="/" />
+  <title>Page Not Found | CloudPaw</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@1&family=Oswald:wght@300;500&family=Roboto:ital@1&display=swap"
-    rel="stylesheet"
-  />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@1&family=Oswald:wght@300;500&family=Roboto:ital@1&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
   <link rel="stylesheet" href="css/style.css" />
 </head>
-<body data-page="home">
+<body data-page="not-found">
+
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="site-header">
@@ -35,7 +35,7 @@
       </button>
 
       <ul id="nav-menu" class="nav-links">
-        <li><a href="index.html" aria-current="page">Home</a></li>
+        <li><a href="index.html">Home</a></li>
         <li><a href="pets.html">Find a Pet</a></li>
         <li><a href="about.html">About Us</a></li>
         <li data-admin-only hidden><a href="admin-add.html">Admin: Add Pet</a></li>
@@ -50,35 +50,18 @@
   </header>
 
   <main id="main">
-    <section class="hero" aria-labelledby="hero-heading">
-      <div class="hero-content">
-        <h1 id="hero-heading">Find your new best friend</h1>
-        <p>Browse adoptable pets from shelters and rescues near you.</p>
-        <form class="search-form" role="search" action="pets.html" method="get">
-          <label class="visually-hidden" for="search-input">Search pets</label>
-          <input
-            id="search-input"
-            name="q"
-            type="search"
-            placeholder="Search by name, breed, species, or city…"
-            autocomplete="off"
-          />
-          <button class="btn btn-primary" type="submit">Search</button>
-        </form>
+    <section class="page-header" aria-labelledby="page-heading">
+      <div class="page-header__inner">
+        <h1 id="page-heading">We couldn't find that page</h1>
+        <p>The page may have moved, or there may be a typo in the address.</p>
       </div>
     </section>
 
-    <section id="pets" class="pet-section" aria-labelledby="pets-heading">
-      <header class="section-header">
-        <h2 id="pets-heading">Featured Pets</h2>
-        <a class="section-link" href="pets.html">See all pets →</a>
-      </header>
-
-      <div id="pet-list" class="pet-grid pet-grid--featured" data-limit="3" aria-live="polite" aria-busy="false">
-        <!-- Pet cards rendered by js/script.js -->
+    <section class="pet-section" aria-label="Where to go next">
+      <div class="not-found__actions">
+        <a href="index.html" class="btn btn-primary">Go to Home</a>
+        <a href="pets.html" class="btn btn-ghost">Find a Pet</a>
       </div>
-
-      <p id="pet-status" class="status" role="status"></p>
     </section>
   </main>
 
@@ -106,6 +89,7 @@
     <p class="copyright">© <span id="year"></span> CloudPaw. All rights reserved.</p>
   </footer>
 
+  <script src="js/config.js" defer></script>
   <script src="js/script.js" defer></script>
 </body>
 </html>

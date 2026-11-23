@@ -121,7 +121,7 @@ describe('approving and denying', () => {
   });
 
   test('409: a pending application for an adopted pet cannot be approved, but can be denied', async () => {
-    // The API no longer accepts applications for adopted pets, so add one directly.
+    // The API refuses applications for adopted pets, so add one directly.
     const eve = Number(t.db.prepare(
       "INSERT INTO inquiries (pet_id, name, email, phone, city, housing, reason) VALUES (1, 'Eve', 'eve@cloudpaw.test', '614-555-0100', 'Columbus', 'House', 'R')"
     ).run().lastInsertRowid);

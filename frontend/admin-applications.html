@@ -3,19 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Meet an adoptable pet on CloudPaw." />
-  <title>Pet Details | CloudPaw</title>
-
+  <title>Admin: Applications | CloudPaw</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@1&family=Oswald:wght@300;500&family=Roboto:ital@1&display=swap"
-    rel="stylesheet"
-  />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@1&family=Oswald:wght@300;500&family=Roboto:ital@1&display=swap" rel="stylesheet" />
   <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+  <meta name="robots" content="noindex" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-<body data-page="pet">
+<body data-page="admin-applications">
+
   <a class="skip-link" href="#main">Skip to main content</a>
 
   <header class="site-header">
@@ -39,7 +36,7 @@
         <li><a href="pets.html">Find a Pet</a></li>
         <li><a href="about.html">About Us</a></li>
         <li data-admin-only hidden><a href="admin-add.html">Admin: Add Pet</a></li>
-        <li data-admin-only hidden><a href="admin-applications.html">Admin: Applications</a></li>
+        <li data-admin-only hidden><a href="admin-applications.html" aria-current="page">Admin: Applications</a></li>
       </ul>
 
       <div class="nav-actions">
@@ -49,12 +46,32 @@
     </nav>
   </header>
 
-  <main id="main">
-    <section class="pet-section" aria-label="Pet details">
-      <div id="pet-detail" aria-live="polite" aria-busy="true">
-        <div class="skeleton"></div>
+  <main id="main" hidden>
+    <section class="page-header" aria-labelledby="page-heading">
+      <div class="page-header__inner">
+        <h1 id="page-heading">Review Applications</h1>
+        <p>Adoption applications sent from the site, newest first.</p>
       </div>
-      <p id="pet-status" class="status" role="status">Loading pet…</p>
+    </section>
+
+    <section class="pet-section" aria-label="Applications">
+      <div class="table-card">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col">Applicant</th>
+                <th scope="col">Pet</th>
+                <th scope="col">Email</th>
+                <th scope="col">Status</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="applications-table"></tbody>
+          </table>
+        </div>
+        <p id="applications-status" class="status" role="status" aria-live="polite"></p>
+      </div>
     </section>
   </main>
 
@@ -82,6 +99,7 @@
     <p class="copyright">© <span id="year"></span> CloudPaw. All rights reserved.</p>
   </footer>
 
+  <script src="js/config.js" defer></script>
   <script src="js/script.js" defer></script>
 </body>
 </html>
